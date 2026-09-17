@@ -1,5 +1,7 @@
 "use client";
+
 // Note: The assets are stored in the `/public/image/window-shutter/` directory.
+
 import {
   motion,
   useMotionValue,
@@ -32,7 +34,7 @@ export default function WindowShutter() {
   const brightness = useTransform(y, (currentY) => {
     const totalDist = height > TOP_OFFSET ? height - TOP_OFFSET : 1;
     const progress = Math.min(Math.max(-currentY / totalDist, 0), 1);
-    const brightnessVal = 0.1 + progress * 0.9; // 0.1 (10%) to 1.0 (100%)
+    const brightnessVal = 0.2 + progress * 0.9; // 0.1 (10%) to 1.0 (100%)
     return `brightness(${brightnessVal})`;
   });
 
@@ -167,7 +169,7 @@ export default function WindowShutter() {
             loop
             muted
             playsInline
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover mt-3"
           >
             <source
               src="/image/window-shutter/train-video-day.webm"
