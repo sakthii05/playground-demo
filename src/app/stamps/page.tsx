@@ -7,6 +7,8 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { PiShuffleBold } from "react-icons/pi";
 import { Special_Elite } from "next/font/google";
+import MagnifierGlass from "@/components/stamps/MagnifierGlass";
+import { VscZoomIn, VscZoomOut } from "react-icons/vsc";
 
 const specialEliteFont = Special_Elite({
   subsets: ["latin"],
@@ -18,6 +20,7 @@ const stamps = [
   {
     id: "delhi",
     image: "/image/stamp/delhi.webp",
+    fullStampImage: "/image/stamp/delhi-stamp.webp",
     x: 45,
     y: 65,
     rotate: -45,
@@ -30,17 +33,19 @@ const stamps = [
   {
     id: "chennai",
     image: "/image/stamp/chennai.webp",
+    fullStampImage: "/image/stamp/chennai-stamp.webp",
     x: 56,
     y: 30,
     rotate: 6,
     title: "Chennai",
     nativeTitle: "சென்னை",
-    place: "Marina LightHouse",
+    place: "Marina Lighthouse",
     year: "1977",
   },
   {
     id: "mumbai",
     image: "/image/stamp/mumbai.webp",
+    fullStampImage: "/image/stamp/mumbai-stamp.webp",
     x: 40,
     y: 35,
     rotate: -6,
@@ -52,6 +57,7 @@ const stamps = [
   {
     id: "kerala",
     image: "/image/stamp/kerala.webp",
+    fullStampImage: "/image/stamp/kerala-stamp.webp",
     x: 50,
     y: 45,
     rotate: 15,
@@ -94,6 +100,8 @@ const MotionStamps = () => {
     Object.fromEntries(stamps.map((stamp, index) => [stamp.id, 10 + index])),
   );
   const [topZ, setTopZ] = useState(20);
+  const [magnifierOpen, setMagnifierOpen] = useState(false);
+  const magnifierContainerRef = useRef<HTMLDivElement | null>(null);
 
   const activeStamp = stamps.find((s) => s.id === activeStampId);
 
@@ -102,6 +110,7 @@ const MotionStamps = () => {
     if (activeStampId) {
       setActiveStampId(null);
       setActiveOffset(null);
+      setMagnifierOpen(false);
     }
 
     // Distribute stamps randomly in clustered sectors around center (48%, 46%)
@@ -152,6 +161,7 @@ const MotionStamps = () => {
         // Deactivate — animate back to resting position
         setActiveOffset(null);
         setActiveStampId(null);
+        setMagnifierOpen(false);
         return;
       }
 
@@ -222,125 +232,148 @@ const MotionStamps = () => {
               rotate: stamp.rotate,
             };
             return (
-              <motion.button
-                key={stamp.id}
-                ref={(el) => {
-                  stampRefs.current[stamp.id] = el;
-                }}
-                onClick={() => handleStampClick(stamp)}
-                type="button"
-                className="
-                absolute
-                block
-                cursor-pointer
-                appearance-none
-                border-0
-                bg-transparent
-                p-0
-                outline-none
-                select-none
-                [-webkit-user-drag:none]
-                -translate-x-1/2
-                -translate-y-1/2
-              "
-                initial={false}
-                style={{
-                  width: 180,
-                  transformOrigin: "center center",
-                  zIndex: isActive ? 1000 : zIndexes[stamp.id],
-                }}
-                animate={{
-                  left: `${pos.x}%`,
-                  top: `${pos.y}%`,
-                  x: isActive && activeOffset ? activeOffset.x : 0,
-                  y: isActive && activeOffset ? activeOffset.y : 0,
-                  rotate: isActive ? 0 : pos.rotate,
-                  scale: isActive ? ACTIVE_SCALE : RESTING_SCALE,
-                }}
-                whileHover={
-                  !isActive ? { scale: RESTING_SCALE + 0.025 } : undefined
-                }
-                whileTap={{
-                  scale: isActive ? ACTIVE_SCALE - 0.1 : RESTING_SCALE - 0.015,
-                }}
-                transition={{
-                  duration: 0.72,
-                  ease: [0.22, 1, 0.36, 1],
-                }}
-                draggable={false}
-              >
-                <Image
-                  src={"/image/stamp/stamp-base.webp"}
-                  alt={stamp.title}
-                  width={180}
-                  height={221}
-                  draggable={false}
-                  loading="eager"
+              <React.Fragment key={stamp.id}>
+                <motion.button
+                  ref={(el) => {
+                    stampRefs.current[stamp.id] = el;
+                  }}
+                  onClick={() => handleStampClick(stamp)}
+                  type="button"
                   className="
-                  block
-                  h-auto
-                  w-auto
-                  select-none
-                  pointer-events-none
-                  [-webkit-user-drag:none]
-                  drop-shadow-md
+                    absolute
+                    block
+                    cursor-pointer
+                    appearance-none
+                    border-0
+                    bg-transparent
+                    p-0
+                    outline-none
+                    select-none
+                    [-webkit-user-drag:none]
+                    -translate-x-1/2
+                    -translate-y-1/2
+                  "
+                  initial={false}
+                  style={{
+                    width: 180,
+                    transformOrigin: "center center",
+                    zIndex: isActive ? 1000 : zIndexes[stamp.id],
+                  }}
+                  animate={{
+                    left: `${pos.x}%`,
+                    top: `${pos.y}%`,
+                    x: isActive && activeOffset ? activeOffset.x : 0,
+                    y: isActive && activeOffset ? activeOffset.y : 0,
+                    rotate: isActive ? 0 : pos.rotate,
+                    scale: isActive ? ACTIVE_SCALE : RESTING_SCALE,
+                  }}
+                  whileHover={
+                    !isActive ? { scale: RESTING_SCALE + 0.025 } : undefined
+                  }
+                  whileTap={{
+                    scale: isActive
+                      ? ACTIVE_SCALE - 0.1
+                      : RESTING_SCALE - 0.015,
+                  }}
+                  transition={{
+                    duration: 0.72,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  draggable={false}
+                >
+                  <div
+                    ref={(el) => {
+                      if (activeStampId === stamp.id) {
+                        magnifierContainerRef.current = el;
+                      }
+                    }}
+                  >
+                    <Image
+                      src={"/image/stamp/stamp-base.webp"}
+                      alt={stamp.title}
+                      width={180}
+                      height={221}
+                      draggable={false}
+                      loading="eager"
+                      className="block h-auto w-auto select-none pointer-events-none drop-shadow-md
                 "
-                />
-                <div className="absolute inset-0 m-3.5 ">
-                  <Image
-                    src={stamp.image}
-                    alt={stamp.place}
-                    fill
-                    className="object-contain relative z-1"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                  <div className="absolute inset-0 z-0">
-                    <div className="flex justify-between items-center">
-                      <p className="text-[8px] font-bold text-red-500">
-                        {stamp.year}
-                      </p>
-                      <p className="text-[7px] font-bold text-black/80 font-mono px-1 ">
-                        {stamp.place}
-                      </p>
-                    </div>
-                    <div
-                      className={`${specialEliteFont.className} pt-5 -space-y-1.5 text-black/80`}
-                    >
-                      <h1 className="text-xl font-medium">{stamp.title}</h1>
-                      <h2 className="text-[10px]">{stamp.nativeTitle}</h2>
+                    />
+                    <div className={`absolute inset-0 m-3.5`}>
+                      <Image
+                        src={stamp.image}
+                        alt={stamp.place}
+                        fill
+                        className="object-contain relative z-1"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      />
+
+                      <div className="absolute inset-0 z-0">
+                        <div className="flex justify-between items-center">
+                          <p className="text-[8px] font-bold text-red-500">
+                            {stamp.year}
+                          </p>
+                          <p className="text-[7px] font-bold text-black/80 font-mono px-1 ">
+                            {stamp.place}
+                          </p>
+                        </div>
+                        <div
+                          className={`${specialEliteFont.className} pt-5 -space-y-1.5 text-black/80`}
+                        >
+                          <h1 className="text-xl font-medium">{stamp.title}</h1>
+                          <h2 className="text-[10px]">{stamp.nativeTitle}</h2>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-                {/* <AnimatePresence>
-                  {isActive && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{
-                        duration: 0.35,
-                        ease: [0.22, 1, 0.36, 1],
-                      }}
-                      className="absolute w-full text-white/70 text-center"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                    >
-                      Zoom
-                    </motion.div>
-                  )}
-                </AnimatePresence> */}
-              </motion.button>
+
+                  <AnimatePresence>
+                    {isActive && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: 0.35,
+                          ease: [0.22, 1, 0.36, 1],
+                        }}
+                        className="absolute w-full text-white/70 flex justify-end px-2"
+                      >
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMagnifierOpen((prev) => !prev);
+                          }}
+                          className="flex items-center gap-1 px-1.5 text-xs"
+                        >
+                          {magnifierOpen ? <VscZoomOut /> : <VscZoomIn />}
+                          Zoom
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
+
+                {/* Magnifier glass — rendered per-stamp but only active for the current one */}
+                {isActive && magnifierOpen && (
+                  <MagnifierGlass
+                    imageSrc={stamp.fullStampImage}
+                    containerRef={magnifierContainerRef}
+                    isOpen={magnifierOpen}
+                    zoom={2}
+                    size={180}
+                  />
+                )}
+              </React.Fragment>
             );
           })}
         </div>
 
         <div className="h-[30%] w-full bg-neutral-950 p-5 flex justify-center items-center">
           <div className="flex flex-col items-center gap-3">
-            <h2 className="text-4xl font-medium uppercase text-white mb-2">
+            <h2 className="text-2xl md:text-4xl font-medium uppercase text-white mb-2">
               Motion Stamps
             </h2>
-            <p className="font-mono text-white/50 text-center">
+            <p className="font-mono text-white/50 text-center text-sm md:text-base">
               India's most iconic spots now in digital motion stamp.
               <br className="hidden md:block" /> Stay tuned for more.
             </p>

@@ -1,252 +1,434 @@
-'use client'
-import { AnimatePresence, motion } from 'motion/react';
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import Image from 'next/image';
+"use client";
 
-const MagnifierGlass = () => {
-    // --- Magnifier state ---
-      const [magnifierOpen, setMagnifierOpen] = useState(false);
-      const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 });
-      const [isDraggingMagnifier, setIsDraggingMagnifier] = useState(false);
-      const dragOffset = useRef({ x: 0, y: 0 });
-      const stampRefs = useRef<Record<string, HTMLDivElement | null>>({});
-      const magnifierRef = useRef<HTMLDivElement | null>(null);
-      const activeStampId ="chennai"
-      const MAGNIFIER_SIZE = 1
-      const MAGNIFIER_ZOOM = 1;
-      const activeStamp = {
-        id: "chennai",
-        image: "/image/stamp/chennai.webp",
-        x: 56,
-        y: 30,
-        rotate: 6,
-        title: "Chennai",
-        nativeTitle: "சென்னை",
-        place: "Marina LightHouse",
-        year: "1977",
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+
+interface MagnifierGlassProps {
+  /** The image src to magnify */
+  imageSrc: string;
+  /** The container element ref that bounds the magnifier area */
+  containerRef: React.RefObject<HTMLElement | null>;
+  /** Whether the magnifier is active */
+  isOpen: boolean;
+  /** Zoom factor (default 2) */
+  zoom?: number;
+  /** Diameter of the magnifier lens in px (default 180) */
+  size?: number;
+}
+
+const MagnifierGlass: React.FC<MagnifierGlassProps> = ({
+  imageSrc,
+  containerRef,
+  isOpen,
+  zoom = 2,
+  size = 180,
+}) => {
+  // Magnifier center position (viewport coordinates)
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [visible, setVisible] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Track container rect for background-position calculations
+  const containerRectRef = useRef<DOMRect | null>(null);
+  // Pointer offset relative to lens center at the start of drag
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  // RAF id for smooth 60fps positioning
+  const rafRef = useRef<number | null>(null);
+
+  // Preload image
+  useEffect(() => {
+    if (!isOpen) return;
+    const img = new window.Image();
+    img.src = imageSrc;
+  }, [imageSrc, isOpen]);
+
+  // Update container rect
+  const updateContainerRect = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        containerRectRef.current = rect;
+        return rect;
+      }
+    }
+    return null;
+  }, [containerRef]);
+
+  // Initialize position centered over the active stamp when opened
+  useEffect(() => {
+    if (!isOpen) {
+      setVisible(false);
+      setIsDragging(false);
+      return;
+    }
+
+    const initPosition = () => {
+      const rect = updateContainerRect();
+      if (rect) {
+        setPos({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        setVisible(true);
+      } else {
+        setPos({
+          x: window.innerWidth / 2,
+          y: window.innerHeight * 0.4,
+        });
+        setVisible(true);
+      }
+    };
+
+    initPosition();
+    const rafId = requestAnimationFrame(initPosition);
+
+    const onResizeOrScroll = () => {
+      updateContainerRect();
+    };
+
+    window.addEventListener("resize", onResizeOrScroll);
+    window.addEventListener("scroll", onResizeOrScroll, true);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", onResizeOrScroll);
+      window.removeEventListener("scroll", onResizeOrScroll, true);
+    };
+  }, [isOpen, updateContainerRect]);
+
+  // Grab handle pointer event handlers
+  const handleHandlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      updateContainerRect();
+
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback if browser doesn't support capture
+      }
+
+      dragOffsetRef.current = {
+        x: e.clientX - pos.x,
+        y: e.clientY - pos.y,
       };
-    
-      // Reset magnifier when active stamp changes or closes
-      useEffect(() => {
-        setMagnifierOpen(false);
-      }, [activeStampId]);
-    
-      // Center the magnifier on the active stamp when opened
-      const handleToggleMagnifier = useCallback(() => {
-        if (magnifierOpen) {
-          setMagnifierOpen(false);
-          return;
-        }
-        if (!activeStampId) return;
-        const el = stampRefs.current[activeStampId];
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          setMagnifierPos({
-            x: rect.left + rect.width / 2 - MAGNIFIER_SIZE / 2,
-            y: rect.top + rect.height / 2 - MAGNIFIER_SIZE / 2,
-          });
-        }
-        setMagnifierOpen(true);
-      }, [magnifierOpen, activeStampId]);
-    
-      // Pointer event handlers for dragging the magnifier
-      const handleMagnifierPointerDown = useCallback(
-        (e: React.PointerEvent) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingMagnifier(true);
-          dragOffset.current = {
-            x: e.clientX - magnifierPos.x,
-            y: e.clientY - magnifierPos.y,
-          };
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        },
-        [magnifierPos],
-      );
-    
-      const handleMagnifierPointerMove = useCallback(
-        (e: React.PointerEvent) => {
-          if (!isDraggingMagnifier) return;
-          setMagnifierPos({
-            x: e.clientX - dragOffset.current.x,
-            y: e.clientY - dragOffset.current.y,
-          });
-        },
-        [isDraggingMagnifier],
-      );
-    
-      const handleMagnifierPointerUp = useCallback(() => {
-        setIsDraggingMagnifier(false);
-      }, []);
-    
+      setIsDragging(true);
+    },
+    [pos, updateContainerRect],
+  );
+
+  const handleHandlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const newX = e.clientX - dragOffsetRef.current.x;
+      const newY = e.clientY - dragOffsetRef.current.y;
+
+      const margin = size / 2;
+      const clampedX = Math.max(margin, Math.min(window.innerWidth - margin, newX));
+      const clampedY = Math.max(margin, Math.min(window.innerHeight - margin, newY));
+
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        setPos({ x: clampedX, y: clampedY });
+      });
+    },
+    [isDragging, size],
+  );
+
+  const handleHandlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging) return;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
+      setIsDragging(false);
+    },
+    [isDragging],
+  );
+
+  // Global window listeners during drag for seamless tracking on both desktop and mobile
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const onWindowPointerMove = (e: PointerEvent) => {
+      const newX = e.clientX - dragOffsetRef.current.x;
+      const newY = e.clientY - dragOffsetRef.current.y;
+      const margin = size / 2;
+      const clampedX = Math.max(margin, Math.min(window.innerWidth - margin, newX));
+      const clampedY = Math.max(margin, Math.min(window.innerHeight - margin, newY));
+
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        setPos({ x: clampedX, y: clampedY });
+      });
+    };
+
+    const onWindowPointerUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("pointermove", onWindowPointerMove);
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", onWindowPointerMove);
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerUp);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isDragging, size]);
+
+  // Calculate background-position so the lens shows the magnified region
+  const getBackgroundProps = (): React.CSSProperties => {
+    const rect = containerRectRef.current;
+    if (!rect) return { backgroundColor: "#18181b" };
+
+    // How far (0→1) the lens center is relative to container
+    const relX = (pos.x - rect.left) / rect.width;
+    const relY = (pos.y - rect.top) / rect.height;
+
+    // Zoomed image size
+    const bgW = rect.width * zoom;
+    const bgH = rect.height * zoom;
+
+    // Align the point on the image with the center of the lens
+    const bgX = -(relX * bgW - size / 2);
+    const bgY = -(relY * bgH - size / 2);
+
+    return {
+      backgroundImage: `url(${imageSrc})`,
+      backgroundSize: `${bgW}px ${bgH}px`,
+      backgroundPosition: `${bgX}px ${bgY}px`,
+      backgroundRepeat: "no-repeat",
+      backgroundColor: "#18181b",
+    };
+  };
+
+  const half = size / 2;
+
   return (
     <AnimatePresence>
-      {magnifierOpen &&
-        activeStamp &&
-        (() => {
-          // Compute the stamp's current on-screen rect
-          const el = stampRefs.current[activeStamp.id];
-          const stampRect = el?.getBoundingClientRect();
-          if (!stampRect) return null;
+      {isOpen && visible && (
+        <motion.div
+          key="magnifier-glass"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.5 }}
+          transition={{ type: "spring", damping: 24, stiffness: 300 }}
+          className="fixed select-none pointer-events-none"
+          style={{
+            left: pos.x - half,
+            top: pos.y - half,
+            width: size,
+            height: size,
+            zIndex: 2000,
+            willChange: "left, top",
+          }}
+        >
+          {/* Metallic Bezel Rim */}
+          <div
+            style={{
+              position: "absolute",
+              inset: -5,
+              borderRadius: "50%",
+              background:
+                "linear-gradient(135deg, #f5e2b8 0%, #b38743 30%, #fae8be 55%, #7a541c 80%, #c9a45e 100%)",
+              boxShadow: `
+                0 20px 48px rgba(0,0,0,0.65),
+                0 6px 16px rgba(0,0,0,0.45),
+                inset 0 1px 2px rgba(255,255,255,0.6),
+                inset 0 -1px 3px rgba(0,0,0,0.6)
+              `,
+              pointerEvents: "none",
+            }}
+          />
 
-          // Center of magnifier in viewport
-          const magCenterX = magnifierPos.x + MAGNIFIER_SIZE / 2;
-          const magCenterY = magnifierPos.y + MAGNIFIER_SIZE / 2;
-
-          // The scaled-up stamp dimensions
-          const scaledW = stampRect.width * MAGNIFIER_ZOOM;
-          const scaledH = stampRect.height * MAGNIFIER_ZOOM;
-
-          // Position the scaled clone so the point under magnifier center is centered in the circle
-          const cloneLeft =
-            MAGNIFIER_SIZE / 2 - (magCenterX - stampRect.left) * MAGNIFIER_ZOOM;
-          const cloneTop =
-            MAGNIFIER_SIZE / 2 - (magCenterY - stampRect.top) * MAGNIFIER_ZOOM;
-
-          return (
-            <motion.div
-              key="magnifier"
-              ref={magnifierRef}
-              initial={{ opacity: 0, scale: 0.3 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.3 }}
-              transition={{ type: "spring", damping: 22, stiffness: 300 }}
-              onPointerDown={handleMagnifierPointerDown}
-              onPointerMove={handleMagnifierPointerMove}
-              onPointerUp={handleMagnifierPointerUp}
-              className="fixed select-none touch-none"
+          {/* Glass Lens (Shows magnified image) */}
+          <div
+            style={{
+              width: size,
+              height: size,
+              borderRadius: "50%",
+              overflow: "hidden",
+              position: "relative",
+              border: "4px solid rgba(80, 50, 15, 0.35)",
+              boxShadow: `
+                inset 0 0 0 1px rgba(255,255,255,0.25),
+                inset 0 0 24px 8px rgba(0,0,0,0.35)
+              `,
+              pointerEvents: "none",
+              ...getBackgroundProps(),
+            }}
+          >
+            {/* Top specular reflection / curved glass highlight */}
+            <div
               style={{
-                left: magnifierPos.x,
-                top: magnifierPos.y,
-                width: MAGNIFIER_SIZE,
-                height: MAGNIFIER_SIZE,
-                zIndex: 2000,
-                cursor: isDraggingMagnifier ? "grabbing" : "grab",
+                position: "absolute",
+                top: "6%",
+                left: "14%",
+                width: "48%",
+                height: "26%",
+                borderRadius: "50%",
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 100%)",
+                transform: "rotate(-18deg)",
+                pointerEvents: "none",
+                zIndex: 10,
+              }}
+            />
+
+            {/* Bottom-right secondary reflection */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: "10%",
+                right: "14%",
+                width: "24%",
+                height: "14%",
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(ellipse, rgba(255,255,255,0.12) 0%, transparent 70%)",
+                pointerEvents: "none",
+                zIndex: 10,
+              }}
+            />
+
+            {/* Subtle inner lens rim shade */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: "50%",
+                boxShadow: "inset 0 0 20px 6px rgba(0,0,0,0.25)",
+                pointerEvents: "none",
+                zIndex: 11,
+              }}
+            />
+          </div>
+
+          {/* Grab Handle - only element with pointer events enabled */}
+          <div
+            onPointerDown={handleHandlePointerDown}
+            onPointerMove={handleHandlePointerMove}
+            onPointerUp={handleHandlePointerUp}
+            onPointerCancel={handleHandlePointerUp}
+            onLostPointerCapture={handleHandlePointerUp}
+            className="absolute pointer-events-auto touch-none select-none"
+            style={{
+              left: "85.35%",
+              top: "85.35%",
+              transformOrigin: "top center",
+              transform: `translate(-50%, 0) rotate(-45deg) ${isDragging ? "scale(0.97)" : "scale(1)"}`,
+              transition: isDragging ? "none" : "transform 0.15s ease",
+              cursor: isDragging ? "grabbing" : "grab",
+              zIndex: 30,
+              padding: "16px", // Generous invisible touch target padding (mobile & desktop)
+              marginLeft: "-16px",
+              marginTop: "-4px",
+            }}
+            title="Grab to move lens"
+          >
+            {/* Brass Ferrule (collar attaching handle to rim) */}
+            <div
+              style={{
+                width: 16,
+                height: 12,
+                margin: "0 auto",
+                borderRadius: "3px 3px 1px 1px",
+                background:
+                  "linear-gradient(90deg, #7a541c 0%, #fae8be 35%, #d9b56f 60%, #5e3f12 100%)",
+                boxShadow:
+                  "0 2px 4px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.5)",
+                border: "1px solid rgba(255,255,255,0.15)",
+              }}
+            />
+
+            {/* Wooden Handle Shaft */}
+            <div
+              style={{
+                width: 18,
+                height: 68,
+                margin: "0 auto",
+                borderRadius: "4px 4px 8px 8px",
+                background:
+                  "linear-gradient(90deg, #241106 0%, #592e15 22%, #854924 45%, #592e15 75%, #1c0b03 100%)",
+                boxShadow: `
+                  4px 6px 14px rgba(0,0,0,0.6),
+                  inset -2px 0 4px rgba(0,0,0,0.5),
+                  inset 2px 0 4px rgba(255,255,255,0.15)
+                `,
+                border: "1px solid rgba(255,255,255,0.08)",
+                position: "relative",
+                overflow: "hidden",
               }}
             >
-              {/* Glass lens — shows zoomed stamp clone */}
-              <div
-                style={{
-                  width: MAGNIFIER_SIZE,
-                  height: MAGNIFIER_SIZE,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  position: "relative",
-                  border: "6px solid rgba(200,200,210,0.55)",
-                  boxShadow: `
-                    0 0 0 2px rgba(120,120,130,0.3),
-                    0 8px 32px rgba(0,0,0,0.55),
-                    inset 0 2px 8px rgba(255,255,255,0.18),
-                    inset 0 -4px 12px rgba(0,0,0,0.2)
-                  `,
-                  background: "#1a1a1a",
-                }}
-              >
-                {/* Scaled clone of the full stamp */}
-                <div
-                  style={{
-                    position: "absolute",
-                    left: cloneLeft,
-                    top: cloneTop,
-                    width: scaledW,
-                    height: scaledH,
-                    pointerEvents: "none",
-                  }}
-                >
-                  {/* Stamp base */}
-                  <Image
-                    src="/image/stamp/stamp-base.webp"
-                    alt=""
-                    width={180}
-                    height={221}
-                    draggable={false}
-                    className="block w-full h-full select-none pointer-events-none"
-                  />
-                  {/* Inner content (photo + text) */}
-                  <div className="absolute inset-0 m-[7%]">
-                    <Image
-                      src={activeStamp.image}
-                      alt={activeStamp.place}
-                      fill
-                      className="object-contain relative z-10"
-                      sizes="400px"
-                    />
-                    <div className="absolute inset-0 z-0">
-                      <div className="flex justify-between items-center">
-                        <p className="text-[8px] font-bold text-red-500">
-                          {activeStamp.year}
-                        </p>
-                        <p className="text-[7px] font-bold text-black/80 font-mono px-1">
-                          {activeStamp.place}
-                        </p>
-                      </div>
-                      <div
-                        className={`pt-5 -space-y-1.5 text-black/80`}
-                      >
-                        <h1 className="text-xl font-medium">
-                          {activeStamp.title}
-                        </h1>
-                        <h2 className="text-[10px]">
-                          {activeStamp.nativeTitle}
-                        </h2>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Specular reflection / glare */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "8%",
-                    left: "15%",
-                    width: "45%",
-                    height: "30%",
-                    borderRadius: "50%",
-                    background:
-                      "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 100%)",
-                    transform: "rotate(-20deg)",
-                    pointerEvents: "none",
-                    zIndex: 10,
-                  }}
-                />
-                {/* Secondary subtle reflection */}
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "12%",
-                    right: "18%",
-                    width: "20%",
-                    height: "12%",
-                    borderRadius: "50%",
-                    background:
-                      "radial-gradient(ellipse, rgba(255,255,255,0.1) 0%, transparent 70%)",
-                    pointerEvents: "none",
-                    zIndex: 10,
-                  }}
-                />
-              </div>
-              {/* Handle */}
+              {/* Brass accent rings on handle */}
               <div
                 style={{
                   position: "absolute",
-                  bottom: -22,
-                  left: "50%",
-                  transform: "translateX(-50%) rotate(45deg)",
-                  width: 14,
-                  height: 32,
-                  borderRadius: 6,
+                  top: 12,
+                  left: 0,
+                  right: 0,
+                  height: 3,
                   background:
-                    "linear-gradient(135deg, #8B7355 0%, #6B5640 50%, #4A3C2A 100%)",
-                  boxShadow: "2px 4px 8px rgba(0,0,0,0.4)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                    "linear-gradient(90deg, #7a541c 0%, #fae8be 40%, #7a541c 100%)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
                 }}
               />
-            </motion.div>
-          );
-        })()}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 19,
+                  left: 0,
+                  right: 0,
+                  height: 2,
+                  background:
+                    "linear-gradient(90deg, #7a541c 0%, #fae8be 40%, #7a541c 100%)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                }}
+              />
+              {/* Wood grain sheen */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: "35%",
+                  width: "25%",
+                  background:
+                    "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+                  pointerEvents: "none",
+                }}
+              />
+            </div>
+
+            {/* Brass End Pommel */}
+            <div
+              style={{
+                width: 20,
+                height: 9,
+                margin: "-2px auto 0",
+                borderRadius: "2px 2px 6px 6px",
+                background:
+                  "linear-gradient(90deg, #7a541c 0%, #fae8be 35%, #d9b56f 60%, #5e3f12 100%)",
+                boxShadow:
+                  "0 3px 6px rgba(0,0,0,0.5), inset 0 -1px 2px rgba(0,0,0,0.4)",
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          </div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
-}
+};
 
-export default MagnifierGlass
+export default MagnifierGlass;
