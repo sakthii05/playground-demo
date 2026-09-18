@@ -371,7 +371,7 @@ const MotionStamps = () => {
         <div className="h-[30%] w-full bg-neutral-950 p-5 flex justify-center items-center">
           <div className="flex flex-col items-center gap-3">
             <h2 className="text-2xl md:text-4xl font-medium uppercase text-white mb-2">
-              Motion Stamps
+              Digital Stamps
             </h2>
             <p className="font-mono text-white/50 text-center text-sm md:text-base">
               India's most iconic spots now in digital motion stamp.
