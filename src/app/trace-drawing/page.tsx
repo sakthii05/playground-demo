@@ -1,11 +1,6 @@
 "use client";
 // Note: The assets are stored in the `/public/image/trace-images/` directory.
-import {
-  animate,
-  motion,
-  useDragControls,
-  useMotionValue,
-} from "framer-motion";
+import { animate, motion, useDragControls, useMotionValue } from "motion/react";
 import html2canvas from "html2canvas-pro";
 import React, {
   ReactNode,
@@ -785,4 +780,3 @@ const ExportCanvasSnapshot = ({
 };
 
 export default PaperTrace;
-
