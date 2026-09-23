@@ -89,9 +89,6 @@ const PaperTrace = () => {
   const [traceImage, setTraceImage] = useState<string>(DEFAULT_IMAGES[2]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Note
-  const [noteText, setNoteText] = useState("My Drawing Note");
-
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
@@ -440,7 +437,6 @@ const PaperTrace = () => {
     e.target.value = "";
   };
 
-
   // Export
   const handleExport = async () => {
     if (!exportRef.current) return;
@@ -622,7 +618,7 @@ const PaperTrace = () => {
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center gap-5 h-dvh">
+    <div className="relative flex flex-col items-center justify-center gap-5 h-dvh overflow-hidden">
       <h2 className="text-center font-semibold text-3xl font-mono  md:pb-5">
         Trace Drawing
       </h2>
@@ -643,7 +639,7 @@ const PaperTrace = () => {
       )}
 
       {/* Main drawing area */}
-      <div className="relative overflow-hidden">
+      <div className="relative ">
         {/* Trace target with image */}
         <div ref={traceContainerRef} className="relative w-fit h-fit">
           <Image
@@ -702,7 +698,6 @@ const PaperTrace = () => {
             history={history}
             drawSmoothStroke={drawSmoothStroke}
             canvasRef={canvasRef}
-            traceImage={traceImage}
           />
         </div>
 
@@ -735,12 +730,10 @@ const ExportCanvasSnapshot = ({
   history,
   drawSmoothStroke,
   canvasRef,
-  traceImage,
 }: {
   history: Stroke[];
   drawSmoothStroke: (ctx: CanvasRenderingContext2D, stroke: Stroke) => void;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
-  traceImage: string | null;
 }) => {
   const exportCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -763,69 +756,23 @@ const ExportCanvasSnapshot = ({
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, exportWidth, exportHeight);
 
+    // Scale strokes to fit export dimensions
     const scaleX = exportWidth / sourceCanvas.width;
     const scaleY = exportHeight / sourceCanvas.height;
 
-    // Draw trace image first as background if available
-    if (traceImage) {
-      const img = new window.Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        ctx.globalAlpha = 0.25;
-
-        // Fit image with padding
-        const padding = 24;
-        const availW = exportWidth - padding * 2;
-        const availH = exportHeight - padding * 2;
-        const imgAspect = img.width / img.height;
-        const boxAspect = availW / availH;
-
-        let drawW: number, drawH: number;
-        if (imgAspect > boxAspect) {
-          drawW = availW;
-          drawH = availW / imgAspect;
-        } else {
-          drawH = availH;
-          drawW = availH * imgAspect;
-        }
-
-        const drawX = padding + (availW - drawW) / 2;
-        const drawY = padding + (availH - drawH) / 2;
-
-        ctx.drawImage(img, drawX, drawY, drawW, drawH);
-        ctx.globalAlpha = 1;
-
-        // Draw strokes on top
-        history.forEach((stroke) => {
-          const scaledStroke: Stroke = {
-            color: stroke.color,
-            width: stroke.width * ((scaleX + scaleY) / 2),
-            points: stroke.points.map((p) => ({
-              ...p,
-              x: p.x * scaleX,
-              y: p.y * scaleY,
-            })),
-          };
-          drawSmoothStroke(ctx, scaledStroke);
-        });
+    history.forEach((stroke) => {
+      const scaledStroke: Stroke = {
+        color: stroke.color,
+        width: stroke.width * ((scaleX + scaleY) / 2),
+        points: stroke.points.map((p) => ({
+          ...p,
+          x: p.x * scaleX,
+          y: p.y * scaleY,
+        })),
       };
-      img.src = traceImage;
-    } else {
-      // No trace image, just draw strokes
-      history.forEach((stroke) => {
-        const scaledStroke: Stroke = {
-          color: stroke.color,
-          width: stroke.width * ((scaleX + scaleY) / 2),
-          points: stroke.points.map((p) => ({
-            ...p,
-            x: p.x * scaleX,
-            y: p.y * scaleY,
-          })),
-        };
-        drawSmoothStroke(ctx, scaledStroke);
-      });
-    }
-  }, [history, drawSmoothStroke, canvasRef, traceImage]);
+      drawSmoothStroke(ctx, scaledStroke);
+    });
+  }, [history, drawSmoothStroke, canvasRef]);
 
   return (
     <canvas
@@ -837,3 +784,4 @@ const ExportCanvasSnapshot = ({
 };
 
 export default PaperTrace;
+
