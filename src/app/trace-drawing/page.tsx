@@ -427,6 +427,7 @@ const PaperTrace = () => {
     reader.onload = (event) => {
       const result = event.target?.result as string;
       setTraceImage(result);
+      handleNewPaper();
     };
     reader.onerror = () => {
       setUploadError("Failed to read file. Please try again.");
