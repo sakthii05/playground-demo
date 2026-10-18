@@ -15,7 +15,6 @@ export function GET(req: NextRequest) {
   let w: Workload;
   if (kind === "browse") w = { kind, tabs: Math.max(1, Math.min(60, Number(q.get("tabs") ?? 12))), video: q.get("video") === "1" };
   else if (kind === "create") w = { kind, app: q.get("app") === "export" ? "export" : "render" };
-  else if (kind === "stream") w = { kind, game: q.get("game") ?? "cyberpunk", res };
   else w = { kind: "game", game: q.get("game") ?? "cyberpunk", res, preset: (["ultra", "high", "medium"].includes(q.get("preset") ?? "") ? q.get("preset") : "ultra") as "ultra" | "high" | "medium", upscale: q.get("upscale") === "1", framegen: q.get("framegen") === "1" };
   return NextResponse.json({ build: { gpu: gpu.id, cpu: cpu.id }, workload: w, profile: profile(gpu, cpu, w) });
 }

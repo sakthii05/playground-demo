@@ -9,7 +9,7 @@ export interface Catalog {
   gpus: Gpu[];
   cpus: Cpu[];
   boards: Board[];
-  games: { id: string; name: string; genre: string }[];
+  games: { id: string; name: string; genre: string; settings: string; source: string }[];
   sources: { label: string; detail: string; url: string }[];
 }
 
@@ -59,6 +59,7 @@ export interface Sample {
   cpuC: number;
   gpuC: number;
   watts: number;
+  fan: number;
   cores: number[];
 }
 const N = 60;
@@ -91,9 +92,11 @@ export function useTelemetry(profile: Profile | null, threads: number, running: 
         gpu: prev ? lerp(prev.gpu, gpuT) : gpuT,
         ram: prev ? lerp(prev.ram, p.ramGB + noise(0.15)) : p.ramGB,
         vram: prev ? lerp(prev.vram, p.vramGB + noise(0.05)) : p.vramGB,
-        cpuC: prev ? prev.cpuC + (p.cpuC + noise(1) - prev.cpuC) * 0.12 : 32,
-        gpuC: prev ? prev.gpuC + (p.gpuC + noise(0.6) - prev.gpuC) * 0.08 : 31,
-        watts: prev ? lerp(prev.watts, (p.cpuW + p.gpuW + 55) / 0.91 + noise(6)) : (p.cpuW + p.gpuW + 55) / 0.91,
+        cpuC: prev ? prev.cpuC + (p.cpuC + noise(0.8) - prev.cpuC) * 0.16 : 34,
+        gpuC: prev ? prev.gpuC + (p.gpuC + noise(0.4) - prev.gpuC) * 0.09 : 34,
+        watts: prev ? lerp(prev.watts, p.wallW + noise(5)) : p.wallW,
+        // the card's fans follow its temperature, so they ramp up as it warms
+        fan: p.gpuFan ? Math.max(0, (p.gpuFan * Math.max(0, Math.min(1, ((prev?.gpuC ?? 34) - 45) / Math.max(1, p.gpuC - 45)))) + noise(12)) : 0,
         cores,
       };
       cur.current = next;

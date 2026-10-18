@@ -109,13 +109,13 @@ function GpuCable({ look }: { look: GpuLook }) {
       const lane = (i - (plugs.length - 1) / 2) * 0.9;
       // straight out of the back of the plug first (strain relief), then a wide bend down past the card
       const lead = (k: number) => plug.clone().add(out.clone().multiplyScalar(k));
-      const end = lead(2.0);
+      const end = lead(1.6);
       // bend radius ≈ 2 cm: up and out of the plug, over, then down beside the card
       // out of the plug, then a wide arc off to the front of the case, and down beside the card — so the
       // run never hangs in front of the plug and the plug stays in plain view
       const side = 3.4;
       const arc = v(plug.x + side * 0.45, end.y + 0.15, end.z + 0.9);
-      const turn = v(plug.x + side * 0.9, end.y - 1.2, Math.max(end.z + 1.3, plug.z + 2.2));
+      const turn = v(plug.x + side * 0.9, end.y - 1.2, Math.max(end.z + 1.0, plug.z + 2.0));
       const drop = v(plug.x + side, end.y - 3.4, Math.max(turn.z + 0.3, 9.4));
       const gx = GROMMET_X + lane;
       const pts = [plug, lead(0.6), lead(1.3), end, arc, turn, drop, v(drop.x + (gx - drop.x) * 0.5, 17.0, Math.max(drop.z, 9.4)), v(gx, 14.2, Math.max(9.0, Math.min(drop.z, 10.2))), v(gx, 12.6, 8.7), v(gx, 11.6, 8.6), v(gx, 10.4, 8.4), v(gx - 0.6, 8.6, Math.min(5.0, psu.z + 3.4)), v(psu.x + 1.6, psu.y, psu.z + 0.6), v(psu.x + 0.4, psu.y, psu.z), psu];

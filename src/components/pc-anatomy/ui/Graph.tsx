@@ -64,5 +64,5 @@ export function Graph({ data, max, tone, points = 60 }: { data: number[]; max: n
     g.strokeStyle = t.grid;
     g.strokeRect(0.5, 0.5, w - 1, h - 1);
   }, [data, max, tone, points]);
-  return <canvas ref={ref} className="pca-graph-canvas" aria-hidden />;
+  return <canvas ref={ref} className="block h-14 w-full rounded-md bg-white" aria-hidden />;
 }

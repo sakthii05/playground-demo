@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import PcAnatomy from "@/components/pc-anatomy/PcAnatomy";
-import { display, mono, sans } from "./fonts";
+import { mono, sans } from "./fonts";
 
 export const metadata: Metadata = {
   title: "Inside the machine — PC Anatomy",
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function PcAnatomyPage() {
   return (
-    <main className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <main className={`${sans.variable} ${mono.variable}`}>
       <PcAnatomy />
     </main>
   );

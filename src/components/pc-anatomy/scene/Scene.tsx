@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
@@ -20,20 +20,22 @@ function Framing() {
   const { camera, size } = useThree();
   const controls = useThree((st) => st.controls) as unknown as OrbitImpl | null;
   const live = useLive();
-  useFrame(() => {
+  useFrame((_, dt) => {
     if (live.current.pinnedView) return;
     const cam = camera as THREE.PerspectiveCamera;
     // slide the picture left (a view offset, so orbiting is unchanged) while the overlay is open
     const sh = (live.current.shifted ?? 0) + ((live.current.shift ?? 0) - (live.current.shifted ?? 0)) * 0.08;
     live.current.shifted = sh;
-    const px = sh * Math.min(220, size.width * 0.17);
+    // centre the PC in the space between the intro and the panel, and fit it a little smaller there
+    const gap = live.current.gap ?? { dx: 0, w: 1 };
+    const px = -sh * gap.dx * size.width;
     if (Math.abs(px) > 0.5) cam.setViewOffset(size.width, size.height, px, 0, size.width, size.height);
     else if (cam.view) cam.clearViewOffset();
     const aspect = size.width / Math.max(1, size.height);
     const half = THREE.MathUtils.degToRad(cam.fov / 2);
     const t = live.current.t;
-    const h = 31 + 22 * t; // half height to fit (the roof lifts well clear)
-    const w = 33 + 15 * t; // half width to fit
+    const h = 31 + 13 * t; // half height to fit (the roof lifts clear of the radiator)
+    const w = (33 + 15 * t) / (1 + (gap.w * 0.94 - 1) * sh); // half width to fit, in the free space
     const want = Math.max(h / Math.tan(half), w / (Math.tan(half) * aspect)) / live.current.zoomed;
     // zoomed in, you can pan (right-drag, two fingers); the point you look at stays inside the case,
     // and drifts back to the middle as you zoom out
@@ -43,12 +45,12 @@ function Framing() {
     const pull = zoomedIn ? 0 : 0.08;
     tgt.set(
       THREE.MathUtils.clamp(tgt.x + (TARGET.x - tgt.x) * pull, -21, 21),
-      THREE.MathUtils.clamp(tgt.y + (TARGET.y - tgt.y) * pull, 6, 47),
+      THREE.MathUtils.clamp(tgt.y + (TARGET.y + 6 * t - tgt.y) * pull, 6, 47), // apart, the middle moves up with the roof
       THREE.MathUtils.clamp(tgt.z + (TARGET.z - tgt.z) * pull, -10, 14),
     );
     const off = cam.position.clone().sub(tgt);
     const d = off.length();
-    off.setLength(d + (want - d) * 0.12);
+    off.setLength(d + (want - d) * (1 - Math.exp(-Math.min(dt, 0.05) / 0.09))); // same glide at any frame rate
     cam.position.copy(tgt).add(off);
   });
   return null;
@@ -56,7 +58,7 @@ function Framing() {
 
 /** Preview options in the URL, for checking states: ?still&az=40&el=12&apart&power&pick=gpu */
 function Preview() {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const controls = useThree((st) => st.controls) as unknown as OrbitImpl | null;
   const live = useLive();
   useEffect(() => {
@@ -175,10 +177,10 @@ function Preview() {
       };
     if (q.has("still")) (window as unknown as { __pcProject: (x: number, y: number, z: number) => number[] }).__pcProject = (x, y, z) => {
       const p = new THREE.Vector3(x, y, z).project(camera);
-      const r = (document.querySelector(".pca-canvas canvas") as HTMLCanvasElement).getBoundingClientRect();
+      const r = gl.domElement.getBoundingClientRect();
       return [r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height];
     };
-  }, [camera, live, controls]);
+  }, [camera, gl, live, controls]);
   return null;
 }
 
@@ -254,7 +256,7 @@ function Pc({ variant }: { variant: Variant }) {
   );
 }
 
-export default function Scene({ live, variant }: { live: React.MutableRefObject<Live>; variant: Variant }) {
+function Scene({ live, variant }: { live: React.MutableRefObject<Live>; variant: Variant }) {
   const still = typeof window !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   return (
     <Canvas
@@ -280,3 +282,6 @@ export default function Scene({ live, variant }: { live: React.MutableRefObject<
     </Canvas>
   );
 }
+
+// the page re-renders for its own UI; the 3D tree only needs to when the build changes
+export default memo(Scene);

@@ -57,11 +57,13 @@ export interface Live {
   t: number; // 0..1 eased explode
   pinned?: boolean; // preview: hold t where the URL put it
   pinnedView?: boolean; // preview: a close-up camera from the URL
-  zoom: number; // 1 … 1.4 (at most 40% closer)
+  zoom: number; // 1 … 2.5, the target the wheel and pinch set
   zoomed: number; // eased zoom the camera uses
   temps: { cpuC: number; gpuC: number; load: number }; // from the running workload: fans, pump display
   shift: number; // 0 … 1: slide the view left so the overlay never covers the PC
   shifted?: number;
+  /** the free space for the PC while the overlay is open: centre offset and width, as fractions of the canvas */
+  gap?: { dx: number; w: number };
   picked: string | null;
   hovered: string | null;
   pick: (id: string | null) => void;
@@ -87,7 +89,7 @@ export function LiveDriver() {
     s.level += Math.sign(target - s.level) * Math.min(Math.abs(target - s.level), rate * step);
     const goal = s.apart ? 1 : 0;
     if (!s.pinned) s.t += Math.sign(goal - s.t) * Math.min(Math.abs(goal - s.t), step / 1.8);
-    s.zoomed += (s.zoom - s.zoomed) * (1 - Math.exp(-step / 0.12));
+    s.zoomed += (s.zoom - s.zoomed) * (1 - Math.exp(-step / 0.16));
     const glow = Math.min(1, s.level * 1.6);
     M.led.color.copy(LED_OFF).lerp(LED_ON, glow);
     M.ledSoft.color.copy(SOFT_OFF).lerp(SOFT_ON, glow);

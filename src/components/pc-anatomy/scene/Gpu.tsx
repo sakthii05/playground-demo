@@ -5,7 +5,7 @@
 //  · partner   a three-fan partner card (RTX 5070 Ti, RX 9070 XT, RX 9070 have no reference card)
 // The Founders Edition: dark-grey cast frame whose faces loop round two openings and cross in an X; both
 // 7-blade ringed fans on the down face; fins showing through both faces (double flow-through); a black
-// centre cap over the top edge with the 12V-2×6 recessed at 45°; backlit GEFORCE RTX lettering and white V
+// centre cap over the top edge with the 12V-2×6 socket (plug square to the edge); backlit GEFORCE RTX lettering and white V
 // lights; an all-black bracket with 3 × DisplayPort and 1 × HDMI.
 // Local frame: x along the card (0 = bracket end), y through it (+ = back face, up), z across (0 = slot edge).
 import { useMemo, useRef } from "react";
@@ -59,7 +59,7 @@ export function gpuMatrix(t: number, out = new THREE.Matrix4(), family: GpuFamil
 /** Where the power cable's plugs sit on the card (back of each plug) and which way their wires leave. */
 export function gpuPlugs(look: GpuLook = GPU_NOW): { at: THREE.Vector3; dir: THREE.Vector3; pins: "12v2x6" | "8pin" }[] {
   const d = DIMS[look.family];
-  if (look.family !== "partner") return [{ at: new THREE.Vector3(d.L / 2, 0.1 + 2.25 * Math.SQRT1_2, d.H - 0.1 + 2.25 * Math.SQRT1_2), dir: new THREE.Vector3(0, Math.SQRT1_2, Math.SQRT1_2), pins: "12v2x6" }];
+  if (look.family !== "partner") return [{ at: new THREE.Vector3(d.L / 2, 0.1, d.H - 0.1 + 2.25), dir: new THREE.Vector3(0, 0, 1), pins: "12v2x6" }];
   if (look.brand === "AMD")
     return [-1, 1].map((s) => ({ at: new THREE.Vector3(d.L - 8.4 + s * 1.25, 0.6, d.H + 1.45), dir: new THREE.Vector3(0, 0, 1), pins: "8pin" as const }));
   return [{ at: new THREE.Vector3(d.L - 8.4, 0.6, d.H + 1.45), dir: new THREE.Vector3(0, 0, 1), pins: "12v2x6" }];
@@ -227,7 +227,8 @@ function FoundersCard({ family }: { family: "fe-large" | "fe-small" }) {
       <Bx a={[MID - 3.1, -T + 0.45, 0.45]} b={[MID + 3.1, T - 0.45, H - 0.45]} m={M.black} e={false} />
       <Bx a={[MID - 2.7, -T - 0.03, H - 0.62]} b={[MID + 2.7, T + 0.03, H + 0.06]} m={M.black} />
       <Bx a={[MID - 1.7, -1.0, H - 0.2]} b={[MID + 1.7, 1.0, H + 0.065]} m={M.dark} e={false} />
-      <group position={[MID, 0.1, H - 0.1]} rotation={[-Math.PI / 4, 0, 0]}>
+      {/* the cable's plug stands straight out of the socket, square to the card's edge */}
+      <group position={[MID, 0.1, H - 0.1]}>
         <Bx a={[-1.2, -0.42, -0.25]} b={[1.2, 0.42, 0.25]} m={M.slot} />
         {/* the cable's plug: housing, latch over the sense pins, and the boot the wires leave from */}
         <Bx a={[-1.15, -0.38, 0.25]} b={[1.15, 0.38, 1.55]} m={M.black} />

@@ -265,7 +265,7 @@ export function Case() {
       <Body id="back">
         <BackPanel />
       </Body>
-      <Explode by={[0, 26, 0]} from={0} to={0.28} id="top">
+      <Explode by={[0, 18, 0]} from={0} to={0.28} id="top">
         <TopPanel />
       </Explode>
       <Explode by={[9, 0, 0]} from={0} to={0.28} id="front">
