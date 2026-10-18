@@ -1,0 +1,316 @@
+/* CRT Screen and Retro TV Skeuomorphic Styles */
+
+.tv-crt-screen {
+  overflow: hidden;
+  background-color: #050608;
+  border-radius: 4.5% / 5.5%;
+  position: relative;
+}
+
+/* Curved CRT Glass Specular Glare */
+.tv-crt-glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 40% 25%,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.03) 40%,
+    rgba(0, 0, 0, 0.45) 85%,
+    rgba(0, 0, 0, 0.8) 100%
+  );
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.9), inset 0 0 80px rgba(0, 0, 0, 0.85);
+  border-radius: inherit;
+  z-index: 4;
+}
+
+/* CRT Scanlines */
+.tv-crt-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.28) 3px,
+    rgba(0, 0, 0, 0.35) 4px
+  );
+  opacity: 0.85;
+  z-index: 5;
+}
+
+/* Subtle CRT phosphor flicker */
+@keyframes crtFlicker {
+  0% { opacity: 0.985; }
+  50% { opacity: 1; }
+  100% { opacity: 0.97; }
+}
+
+.tv-crt-flicker {
+  animation: crtFlicker 0.12s infinite alternate;
+}
+
+/* Power On Animation */
+@keyframes crtPowerOn {
+  0% {
+    transform: scale(0.001, 0.001);
+    filter: brightness(25);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1, 0.002);
+    filter: brightness(18);
+    opacity: 1;
+  }
+  65% {
+    transform: scale(1, 0.04);
+    filter: brightness(8);
+    opacity: 1;
+  }
+  85% {
+    transform: scale(1, 0.85);
+    filter: brightness(2.5);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1, 1);
+    filter: brightness(1);
+    opacity: 1;
+  }
+}
+
+.crt-power-on {
+  animation: crtPowerOn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Power Off Animation */
+@keyframes crtPowerOff {
+  0% {
+    transform: scale(1, 1);
+    filter: brightness(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1, 0.004);
+    filter: brightness(8);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(0.02, 0.004);
+    filter: brightness(15);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(0, 0);
+    filter: brightness(20);
+    opacity: 0;
+  }
+}
+
+.crt-power-off {
+  animation: crtPowerOff 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Channel change glitch / dim */
+@keyframes crtChannelSwitch {
+  0% {
+    opacity: 1;
+    filter: brightness(1.8) contrast(1.4);
+  }
+  25% {
+    opacity: 0.15;
+    filter: brightness(0.2) contrast(2);
+  }
+  60% {
+    opacity: 0.6;
+    filter: brightness(1.5) contrast(1.2);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1) contrast(1);
+  }
+}
+
+.crt-channel-switch {
+  animation: crtChannelSwitch 0.35s ease-out;
+}
+
+/* Retro OSD Font & Phosphor Glow */
+.retro-osd-text {
+  font-family: ui-monospace, "Courier New", Courier, monospace;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #38ef7d;
+  text-shadow:
+    0 0 3px #11998e,
+    0 0 8px rgba(56, 239, 125, 0.7),
+    0 0 16px rgba(17, 153, 142, 0.4);
+}
+
+.retro-osd-rec {
+  color: #ff3333;
+  text-shadow:
+    0 0 4px #ff0000,
+    0 0 10px rgba(255, 51, 51, 0.8);
+}
+
+/* Skeuomorphic 3D Plastic VCR Button Styling */
+.vcr-button {
+  position: relative;
+  background: linear-gradient(180deg, #2b2c30 0%, #1e1f23 45%, #151619 100%);
+  border: 1px solid #101113;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.28),
+    inset 0 -1.5px 2px rgba(0, 0, 0, 0.85),
+    0 2px 3px rgba(0, 0, 0, 0.65),
+    0 1px 1px rgba(0, 0, 0, 0.9);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.08s ease;
+  user-select: none;
+  touch-action: manipulation;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.vcr-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #323438 0%, #222428 45%, #18191c 100%);
+}
+
+.vcr-button:active:not(:disabled),
+.vcr-button.is-pressed {
+  transform: translateY(1.5px) scale(0.985);
+  background: linear-gradient(180deg, #17181b 0%, #131416 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.95),
+    inset 0 0 2px rgba(0, 0, 0, 0.8),
+    0 0.5px 1px rgba(0, 0, 0, 0.4);
+}
+
+.vcr-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 1px;
+}
+
+/* Side Pill Buttons (CH ▲, CH ▼, VOL) */
+.side-pill-button {
+  position: relative;
+  background: linear-gradient(180deg, #2c2d32 0%, #1d1e22 50%, #141518 100%);
+  border: 1px solid #0f1012;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.25),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.8),
+    0 2px 3px rgba(0, 0, 0, 0.7);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.side-pill-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #34353a 0%, #222327 50%, #18191c 100%);
+}
+
+.side-pill-button:active:not(:disabled),
+.side-pill-button.is-pressed {
+  transform: translateY(1.2px) scale(0.98);
+  background: linear-gradient(180deg, #161719 0%, #111214 100%);
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.95),
+    0 0.5px 1px rgba(0, 0, 0, 0.4);
+}
+
+.side-pill-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 1px;
+}
+
+/* Power Circular Button */
+.power-button {
+  position: relative;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 45% 40%, #2d2e33 0%, #1b1c20 60%, #121316 100%);
+  border: 1px solid #0b0c0e;
+  box-shadow:
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.25),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.9),
+    0 2.5px 4px rgba(0, 0, 0, 0.85);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.power-button:hover:not(:disabled) {
+  background: radial-gradient(circle at 45% 40%, #35363c 0%, #212226 60%, #16171a 100%);
+}
+
+.power-button:active:not(:disabled),
+.power-button.is-pressed {
+  transform: translateY(1.5px) scale(0.97);
+  box-shadow:
+    inset 0 2.5px 4px rgba(0, 0, 0, 0.98),
+    0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+.power-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+}
+
+/* OPERATE Red LED Glow */
+.operator-led-bulb {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #ff8080 0%, #e60000 50%, #8a0000 100%);
+  box-shadow:
+    0 0 5px 1px rgba(255, 30, 30, 0.75),
+    0 0 10px 2px rgba(255, 0, 0, 0.4),
+    inset 0 1px 2px rgba(255, 220, 220, 0.8);
+  transition: box-shadow 0.15s ease, filter 0.15s ease, transform 0.15s ease;
+}
+
+.operator-led-off {
+  background: radial-gradient(circle at 35% 35%, #4a1515 0%, #2d0808 60%, #150000 100%);
+  box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.15);
+  opacity: 0.65;
+}
+
+/* Pulse animation on button press */
+@keyframes ledPulseKey {
+  0% {
+    transform: scale(1);
+    box-shadow:
+      0 0 5px 1px rgba(255, 30, 30, 0.75),
+      0 0 10px 2px rgba(255, 0, 0, 0.4);
+  }
+  30% {
+    transform: scale(1.3);
+    box-shadow:
+      0 0 14px 4px rgba(255, 60, 60, 0.98),
+      0 0 25px 8px rgba(255, 10, 10, 0.7);
+    filter: brightness(1.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 5px 1px rgba(255, 30, 30, 0.75),
+      0 0 10px 2px rgba(255, 0, 0, 0.4);
+    filter: brightness(1);
+  }
+}
+
+.operator-led-pulsing {
+  animation: ledPulseKey 0.28s ease-out;
+}
