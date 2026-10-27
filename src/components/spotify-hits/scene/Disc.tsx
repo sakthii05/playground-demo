@@ -3,13 +3,13 @@
 // catching the light, a bright band, the clear hub with its stacking ring and the hole's cut edge,
 // a silver rim, and the data side underneath: dark, with fine tracks and a rainbow shine.
 // On the open album it pops on hover and can be dragged round and flipped, then settles face up or down.
-import { useEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { easing } from "maath";
 import { Scribble } from "./Scribble";
-import { dataSide, printScreen } from "./textures";
-import { DISC, H, LIFT, POP, R, type LiveRef } from "./live";
+import { BLANK, dataSide, printScreen } from "./textures";
+import { DISC, DISC_REST, H, LIFT, POP, R, type LiveRef } from "./live";
 
 const SEG = 128;
 /** Spin while playing, in radians a second: about 6 turns a minute, slow enough to read the label. */
@@ -19,6 +19,17 @@ const SPIN = 0.65;
 let shared: ReturnType<typeof makeShared> | null = null;
 function makeShared() {
   return {
+    // satin ink on metal: a broad sheen, with the dot screen only showing where the light is
+    print: new THREE.MeshPhysicalMaterial({
+      map: BLANK,
+      metalness: 0.25,
+      roughness: 0.5,
+      roughnessMap: printScreen(),
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.45,
+      sheen: 0.4,
+      sheenRoughness: 0.6,
+    }),
     silver: new THREE.MeshPhysicalMaterial({ color: "#e4e7ea", metalness: 1, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08 }),
     band: new THREE.MeshPhysicalMaterial({ color: "#c9ced4", metalness: 0.9, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }),
     hub: new THREE.MeshPhysicalMaterial({ color: "#dfe4e8", metalness: 0, roughness: 0.12, transparent: true, opacity: 0.42, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false }),
@@ -49,23 +60,12 @@ export function Disc({ color, label, live, active }: { color: string; label: THR
   const last = useRef({ x: 0, y: 0, t: 0 });
   const m = useMemo(() => (shared ??= makeShared()), []);
 
-  // satin ink on metal: a broad sheen, with the dot screen only showing where the light is
-  const print = useMemo(
-    () =>
-      new THREE.MeshPhysicalMaterial({
-        color: label ? "#ffffff" : color,
-        map: label,
-        metalness: 0.25,
-        roughness: 0.5,
-        roughnessMap: printScreen(),
-        clearcoat: 0.35,
-        clearcoatRoughness: 0.45,
-        sheen: 0.4,
-        sheenRoughness: 0.6,
-      }),
-    [color, label],
-  );
-  useEffect(() => () => print.dispose(), [print]);
+  // one disc is ever on screen, so its print is shared and kept: only the label changes
+  const print = m.print;
+  useLayoutEffect(() => {
+    print.map = label ?? BLANK;
+    print.color.set(label ? "#ffffff" : color);
+  }, [print, label, color]);
 
   const isOn = () => active && live.current.mode === "open" && live.current.caseState === "open";
 
@@ -77,7 +77,7 @@ export function Disc({ color, label, live, active }: { color: string; label: THR
     const on = isOn();
     easing.damp(pop.current, "v", on && (d.hover || d.drag) ? 1 : 0, 0.14, dt);
     // rests in the tray; the open timeline lifts it clear, hover lifts it a little more
-    lift.current.position.z = H / 2 + 0.006 + (active ? s.anim.lift * LIFT : 0) + pop.current.v * POP;
+    lift.current.position.z = DISC_REST + (active ? s.anim.lift * LIFT : 0) + pop.current.v * POP;
     d.z = lift.current.position.z;
     if (!active) {
       turn.current.rotation.set(0, 0, 0);

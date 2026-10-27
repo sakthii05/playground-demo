@@ -3,16 +3,43 @@
 import type { MutableRefObject } from "react";
 
 /**
- * Digipak, in the proportions of a real one (about 140 mm square, 2 mm board): a tray panel and a
- * front cover `S` wide and `T` thick, joined by a spine `SPINE` deep that leaves room for the disc.
+ * A jewel case, built to the real one: 142 × 125 × 10.4 mm. Sizes are in scene units, the case
+ * `S` (2) tall, so 1 mm is `MM`. Across, a 6 mm hinge strip on the left and a 136 mm panel; the
+ * panel is centred on x = 0, so the disc is too.
  */
 export const S = 2;
-export const T = 0.03;
-export const CORNER = 0.035;
-export const SPINE = 0.1;
-/** CD: 120 mm, 1.2 mm thick. Radii below are fractions of R, from the real disc. */
-export const R = S * 0.43;
-export const H = 0.018;
+export const MM = S / 125;
+export const CASE = { w: 142 * MM, h: 125 * MM, panel: 136 * MM, hinge: 6 * MM };
+/** Heights off the back plate's inner face, front to back of a closed case. */
+export const Z = {
+  back: -1.2 * MM, // clear back plate, outer face
+  inlay: 0.35 * MM, // paper back insert lies on the back plate, this thick
+  tray: 4.8 * MM, // the clear tray's plate, underside…
+  trayTop: 6 * MM, // …and top, where the disc sits
+  wall: 7.5 * MM, // the base's walls stand this high
+  rim: 7.6 * MM, // the lid's rim comes down to here, outside the walls
+  book: 8.6 * MM, // booklet, clipped under the lid plate
+  lid: 9 * MM, // lid plate, inner face…
+  top: 10.4 * MM, // …and outer face
+};
+/**
+ * Paper, sized to fill the case inside its walls: the booklet covers the whole lid between the hinge
+ * strip and the rim; the back insert's panel (the image is spine | panel | spine) lies between the
+ * base's walls, its spines folded up just inside them. `x` is each one's centre across.
+ */
+export const PAPER = {
+  bookW: 134 * MM,
+  bookH: 122 * MM,
+  bookX: -0.5 * MM,
+  inlayW: 137 * MM,
+  inlayH: 118 * MM,
+  inlayX: -3 * MM,
+  spine: 6 * MM,
+  thick: 0.35 * MM,
+};
+/** CD: 120 mm, thin. Radii below are fractions of R, from the real disc. */
+export const R = 60 * MM;
+export const H = 0.011;
 export const DISC = {
   hole: 0.125, // 15 mm centre hole
   hub: 0.3, // clear plastic out to here
@@ -20,9 +47,18 @@ export const DISC = {
   mirror: 0.38, // a bright band before the print starts
   print: 0.975, // printed label stops just short of the rim
 };
-/** How far the open timeline lifts the disc out of the tray, and the extra lift on hover. */
-export const LIFT = 0.3;
-export const POP = 0.1;
+/**
+ * How far the open timeline raises the disc on its hub (just unclipped: it stays seated, so the hub
+ * shows square in the hole), and the extra lift on hover.
+ */
+export const LIFT = 0.018;
+export const POP = 0.04;
+/** Where the disc's centre sits on the tray, resting. */
+export const DISC_REST = Z.trayTop + H / 2 + 0.003;
+/** The hub the disc clips onto: just inside the hole, standing flush with the raised disc's top. */
+export const HUB = { r: R * 0.118, top: Z.trayTop + H + 0.003 + LIFT };
+/** How long the sleeve stays back after the disc stops turning, so it does not bob in and out. */
+export const HOLD = 0.9;
 
 export type Mode = "browse" | "opening" | "open" | "closing";
 export type CaseState = "closed" | "opening" | "open" | "closing";
@@ -34,8 +70,8 @@ export interface Live {
   /** Whether an album has been brought to the front, and whether its cover is open. */
   mode: Mode;
   caseState: CaseState;
-  /** 0 … 1 values the timelines (GSAP) drive; the frame loop only reads them. */
-  anim: { fly: number; rise: number; hinge: number; lift: number };
+  /** 0 … 1 values the timelines (GSAP) drive; the frame loop only reads them. `flip` turns the case over. */
+  anim: { fly: number; rise: number; hinge: number; lift: number; flip: number };
   /** Next / previous while an album is at the front: the old one leaves by `-dir`, the new one arrives from `dir`. */
   swap: { from: number; dir: number; t: number };
   /** Pointer over the centre cover, -1 … 1 across it. */
@@ -45,8 +81,11 @@ export interface Live {
   playing: boolean;
   /** Pointer across the page, -1 … 1, for the light to follow. */
   pointer: { x: number; y: number };
+  /** Until this time (ms) the carousel is being steered directly (drag, trackpad) and follows tightly. */
+  steer: number;
   open: () => void;
   toggleCase: () => void;
+  turnOver: () => void;
 }
 
 export type LiveRef = MutableRefObject<Live>;

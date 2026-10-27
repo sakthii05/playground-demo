@@ -15,7 +15,8 @@ function Driver({ live }: { live: LiveRef }) {
   useFrame(({ scene }, raw) => {
     const dt = Math.min(raw, 0.05);
     const s = live.current;
-    easing.damp(s, "pos", s.target, 0.32, dt);
+    // tight while being dragged or scrolled, so it sits under the finger; softer for steps and snaps
+    easing.damp(s, "pos", s.target, performance.now() < s.steer ? 0.08 : 0.3, dt);
     easing.damp(scene.environmentRotation, "y", s.pointer.x * 0.5, 0.4, dt);
     easing.damp(scene.environmentRotation, "x", -s.pointer.y * 0.25, 0.4, dt);
   });
@@ -38,12 +39,12 @@ function Studio() {
       {/* a warm and a cool fill so the iridescence has colour to work with */}
       <Lightformer form="rect" intensity={0.8} color="#ffd9b0" position={[-4, -4, 5]} scale={[5, 2, 1]} />
       <Lightformer form="rect" intensity={0.8} color="#b9d4ff" position={[4, -3, 5]} scale={[5, 2, 1]} />
-      <Lightformer form="ring" intensity={1.4} position={[0, 0, 9]} scale={3} />
+      {/* (no ring light: on the clear lid its dark middle mirrored as a round shadow) */}
     </Environment>
   );
 }
 
-function Scene({ live, tracks, active }: { live: LiveRef; tracks: Track[]; active: number }) {
+function Scene({ live, tracks, active, open }: { live: LiveRef; tracks: Track[]; active: number; open: boolean }) {
   return (
     <Canvas
       dpr={[1, 1.75]}
@@ -55,10 +56,11 @@ function Scene({ live, tracks, active }: { live: LiveRef; tracks: Track[]; activ
       }}
     >
       <Studio />
-      <ambientLight intensity={0.2} />
-      <directionalLight position={[2, 4, 8]} intensity={1.1} />
+      {/* soft fill only: a direct light puts a hard, blown-out spot on smooth plastic; the studio's
+          panels do the shaping */}
+      <hemisphereLight args={["#ffffff", "#3a3a40", 0.9]} />
       {tracks.map((t, i) => (
-        <Album key={t.slug} track={t} index={i} count={tracks.length} selected={i === active} live={live} />
+        <Album key={t.slug} track={t} index={i} count={tracks.length} selected={i === active} open={open} live={live} />
       ))}
       <Driver live={live} />
     </Canvas>

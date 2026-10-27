@@ -1,44 +1,60 @@
 "use client";
-// One album: a card digipak (tray panel with the disc, a spine, and the front cover) placed in the
-// carousel every frame from the live state. Only the album in the centre answers the pointer.
-// Open, the spine folds flat and the cover swings over (left on wide screens, up on tall ones).
-import { useEffect, useMemo, useRef, useState } from "react";
+// One album: a clear jewel case placed in the carousel every frame from the live state. Inside it,
+// the booklet clipped under the lid, the disc on the tray's hub, and the back insert under the tray
+// with its spines folded up the sides. Only the album in the centre answers the pointer.
+// At the front, the lid swings open on its hinge (and on tall screens the open case turns upright),
+// and the closed case can be turned over to show its back.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { easing } from "maath";
 import { Disc } from "./Disc";
-import { panelGeometry } from "./geo";
-import { buildArt, disposeArt, paperGrain, softShadow, type Art } from "./textures";
-import { CORNER, H, LIFT, R, S, SPINE, T, clamp01, discBusy, easeInOut, lerpTable, offsetOf, smooth, wrap, type LiveRef } from "./live";
+import { HINGE, caseGeometry } from "./geo";
+import { BLANK, buildFront, detailArt, disposeArt, paperGrain, plasticWear, softShadow, type DetailArt, type FrontArt } from "./textures";
+import { CASE, DISC_REST, HOLD, LIFT, R, S, Z, clamp01, discBusy, easeInOut, lerpTable, offsetOf, smooth, wrap, type LiveRef } from "./live";
 import type { Track } from "../data/tracks";
 
-const BLACK = new THREE.Color("#000000");
 const UNIT_PLANE = new THREE.PlaneGeometry(1, 1);
-/** How far the spread slides to stay centred once open: half the cover, spine and both boards. */
-const SHIFT = (S + SPINE + 2 * T) / 2;
+/** Visual parts are never tested by the pointer; the plain hit boxes stand in for them. */
+const NO_RAY = () => null;
+const HIT = new THREE.MeshBasicMaterial({ visible: false });
+/** How long an album must stay in the centre before its detail art is made (none while scrolling past). */
+const SETTLE_MS = 450;
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+/** Open, the lid lies flat beside the base; this slides the pair so it stays centred. */
+const SHIFT = (CASE.panel + CASE.hinge) / 2;
+/** The open case's length (lid, hinge strip, base) and the closed case's width, in case heights. */
+const SPAN = (2 * CASE.panel + CASE.hinge) / S;
+const WIDE = CASE.w / S;
 
 /** Where things go for a viewport of vw × vh world units (at the albums' depth). */
 export function layout(vw: number, vh: number) {
   const narrow = vw / vh < 0.9;
-  // width of the centre album in world units, and the row either side, in centre-album widths
-  const w = narrow ? Math.min(vh * 0.34, vw * 0.64) : Math.min(vh * 0.38, vw / 5.2);
-  const xs = narrow ? [0, 0.9, 1.55, 2.0] : [0, 1.06, 1.86, 2.48, 2.95];
+  // height of the centre case in world units, and the row either side, in centre-case heights
+  const w = narrow ? Math.min(vh * 0.32, vw * 0.58) : Math.min(vh * 0.38, vw / 5.8);
+  const xs = narrow ? [0, 0.98, 1.7, 2.2] : [0, 1.17, 2.05, 2.73, 3.25];
   const sc = narrow ? [1, 0.7, 0.52, 0.4] : [1, 0.72, 0.56, 0.44, 0.34];
   const show = narrow ? 2 : 3;
-  // opened, the spread fits and leaves room for the player below: side by side on wide screens,
-  // one above the other on tall ones
-  const span = (2 * S + SPINE + 2 * T) / S;
-  const k = narrow ? Math.min((vw * 0.86) / w, (vh * 0.6) / (span * w)) : Math.min((vw * 0.86) / (span * w), (vh * 0.5) / w);
+  // opened, the spread fits and leaves room for the player below: lying across on wide screens,
+  // turned upright on tall ones
+  const k = narrow ? Math.min((vw * 0.86) / w, (vh * 0.6) / (SPAN * w)) : Math.min((vw * 0.88) / (SPAN * w), (vh * 0.5) / w);
   return { narrow, w, xs, sc, show, k, y: narrow ? 0 : vh * -0.02, yOpen: narrow ? vh * 0.05 : vh * 0.06 };
 }
 
-function useArt(track: Track) {
-  const [art, setArt] = useState<Art | null>(null);
+/**
+ * The front cover, for every album. The rest of the art only once this album has been the chosen one
+ * for a moment: made in small pieces in idle time, then sent to the GPU one texture a frame, so
+ * scrolling past never waits on it.
+ */
+function useArt(track: Track, chosen: boolean) {
+  const gl = useThree((s) => s.gl);
+  const [front, setFront] = useState<FrontArt | null>(null);
+  const [detail, setDetail] = useState<DetailArt | null>(null);
   useEffect(() => {
     let alive = true;
-    let made: Art | null = null;
-    buildArt(track).then((a) => {
-      if (alive) setArt((made = a));
+    let made: FrontArt | null = null;
+    buildFront(track).then((a) => {
+      if (alive) setFront((made = a));
       else disposeArt(a);
     });
     return () => {
@@ -46,67 +62,154 @@ function useArt(track: Track) {
       disposeArt(made);
     };
   }, [track]);
-  return art;
+  const source = front?.source;
+  useEffect(() => {
+    if (!chosen || !source) return;
+    let alive = true;
+    const timer = setTimeout(async () => {
+      const art = await detailArt(track, source);
+      for (const t of Object.values(art)) {
+        if (!alive) return;
+        gl.initTexture(t);
+        await nextFrame();
+      }
+      if (alive) setDetail(art);
+    }, SETTLE_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      // (the art stays cached for a quick return; the cache frees it later)
+      setDetail(null);
+    };
+  }, [track, chosen, source, gl]);
+  return { front, detail };
 }
 
-/** Card stock: matte, with a paper grain in the light, and the print on top. */
-function useCaseMaterials(color: string, art: Art | null) {
+// ---------- materials ----------
+
+/**
+ * The clear plastic, without transmission (an extra render of the whole scene): its faces add only
+ * their reflections, so the light streaks sweep over whatever is behind and the body stays clear,
+ * with a breath of haze. Their cut edges, the rims, walls and hub are a cloudier grey, which is
+ * what makes a jewel case read as one.
+ */
+let plastic: ReturnType<typeof makePlastic> | null = null;
+function makePlastic() {
+  return {
+    edge: new THREE.MeshStandardMaterial({ color: "#dbe3e8", roughness: 0.18, metalness: 0, transparent: true, opacity: 0.42, depthWrite: false, envMapIntensity: 1.4 }),
+    black: new THREE.MeshPhysicalMaterial({ color: "#0d0d0f", roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.25 }),
+    paperEdge: new THREE.MeshStandardMaterial({ color: "#ece8df", roughness: 0.9 }),
+  };
+}
+const shared = () => (plastic ??= makePlastic());
+
+/**
+ * One case's clear faces: they add only their reflections (kept soft and low, so they settle on the
+ * case rather than glare), with a breath of haze, and the case's own few marks of wear.
+ */
+function useFaces(seed: number) {
+  const face = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#000000",
+        emissive: "#060708",
+        roughness: 1,
+        roughnessMap: plasticWear(seed),
+        metalness: 0,
+        envMapIntensity: 1.1,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    [seed],
+  );
+  useEffect(
+    () => () => {
+      face.roughnessMap?.dispose();
+      face.dispose();
+    },
+    [face],
+  );
+  return face;
+}
+
+/**
+ * Paper: the booklet's front is coated stock with a soft gloss; the inside and the insert are
+ * uncoated, with grain. Made once per album and kept: when art arrives (or goes) only their images
+ * change, so the GPU never has to recompile their shaders mid-scroll. Until an image is there, a
+ * blank one stands in, tinted with the album's colour.
+ */
+function usePaper(track: Track, front: FrontArt | null, detail: DetailArt | null) {
   const mats = useMemo(() => {
-    const base = new THREE.Color(color);
     const grain = paperGrain();
-    const card = (map: THREE.Texture | undefined, fallback: THREE.Color, roughness = 0.78) =>
-      new THREE.MeshStandardMaterial({ color: map ? "#ffffff" : fallback, map, roughness, metalness: 0, bumpMap: grain, bumpScale: 0.35, envMapIntensity: 0.55 });
-    const front = card(art?.front, base, 0.62); // a light satin laminate on the front
-    const inside = card(art?.inside, base.clone().lerp(BLACK, 0.3));
-    const tray = card(art?.tray, base.clone().lerp(BLACK, 0.6));
-    const back = card(art?.back, base.clone().lerp(BLACK, 0.35));
-    const edge = card(undefined, base.clone().lerp(BLACK, 0.2), 0.9);
-    const spine = card(undefined, base.clone().lerp(BLACK, 0.1), 0.8);
-    // panel groups: −z face, +z face, cut edge
-    return { cover: [inside, front, edge], base: [back, tray, edge], spine, all: [front, inside, tray, back, edge, spine] };
-  }, [color, art]);
+    const uncoated = (roughness = 0.74) => new THREE.MeshStandardMaterial({ map: BLANK, roughness, metalness: 0, bumpMap: grain, bumpScale: 0.45, envMapIntensity: 0.6 });
+    const cover = new THREE.MeshPhysicalMaterial({ map: BLANK, roughness: 0.45, clearcoat: 0.35, clearcoatRoughness: 0.3, bumpMap: grain, bumpScale: 0.2, envMapIntensity: 0.8 });
+    const inside = uncoated();
+    const tray = uncoated();
+    const back = uncoated(0.6);
+    const spine = uncoated(0.6);
+    return { cover, inside, tray, back, spine, all: [cover, inside, tray, back, spine] };
+  }, []);
   useEffect(() => () => mats.all.forEach((m) => m.dispose()), [mats]);
+  useLayoutEffect(() => {
+    const base = new THREE.Color(track.color);
+    const black = new THREE.Color("#000");
+    const paint = (m: THREE.MeshStandardMaterial, map: THREE.Texture | undefined, darken: number) => {
+      m.map = map ?? BLANK;
+      m.color.copy(map ? new THREE.Color("#ffffff") : base.clone().lerp(black, darken));
+    };
+    paint(mats.cover, front?.front, 0);
+    paint(mats.inside, detail?.inside, 0.12);
+    paint(mats.tray, detail?.tray, 0.32);
+    paint(mats.back, detail?.back, 0.22);
+    paint(mats.spine, detail?.insert, 0.3);
+  }, [mats, track.color, front, detail]);
   return mats;
 }
 
-// the hub the disc clips onto (the recess round it is printed into the tray art)
-const hubPlastic = new THREE.MeshStandardMaterial({ color: "#8d9298", roughness: 0.45 });
-
-export function Album({ track, index, count, selected, live }: { track: Track; index: number; count: number; selected: boolean; live: LiveRef }) {
+export function Album({ track, index, count, selected, open, live }: { track: Track; index: number; count: number; selected: boolean; open: boolean; live: LiveRef }) {
   const place = useRef<THREE.Group>(null);
   const tilt = useRef<THREE.Group>(null);
+  const upright = useRef<THREE.Group>(null);
   const spread = useRef<THREE.Group>(null);
   const caseRef = useRef<THREE.Group>(null);
-  const spine = useRef<THREE.Group>(null);
-  const spineMesh = useRef<THREE.Mesh>(null);
-  const hinge = useRef<THREE.Group>(null);
-  const cover = useRef<THREE.Mesh>(null);
-  const recede = useRef({ v: 0 });
+  const lid = useRef<THREE.Group>(null);
+  const recede = useRef({ v: 0, hold: 0 });
   const shadow = useRef<THREE.Mesh>(null);
   const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({ map: softShadow(), transparent: true, depthWrite: false, opacity: 0 }), []);
   useEffect(() => () => shadowMat.dispose(), [shadowMat]);
-  const art = useArt(track);
-  const mats = useCaseMaterials(track.color, art);
-  const panel = panelGeometry(S, T, CORNER);
 
-  const isCentre = () => {
-    const s = live.current;
-    return index === wrap(Math.round(s.target), count) && Math.abs(offsetOf(index, s.pos, count)) < 0.35;
-  };
-  /** At the front with its cover shut: hover tilts it, a click opens it. */
+  const { front, detail } = useArt(track, selected);
+  const paper = usePaper(track, front, detail);
+  const geo = caseGeometry();
+  const p = shared();
+  const faces = useFaces(track.rank);
+  const plate = useMemo(() => [p.edge, p.edge, p.edge, p.edge, faces, faces], [p, faces]);
+  const trayMat = track.tray === "black" ? p.black : plate;
+  // box faces: +x, −x, +y, −y, +z, −z
+  const bookMats = useMemo(() => [p.paperEdge, p.paperEdge, p.paperEdge, p.paperEdge, paper.cover, paper.inside], [p, paper]);
+  const inlayMats = useMemo(() => [p.paperEdge, p.paperEdge, p.paperEdge, p.paperEdge, paper.tray, paper.back], [p, paper]);
+
+  const chosen = () => index === wrap(Math.round(live.current.target), count);
+  const isCentre = () => chosen() && Math.abs(offsetOf(index, live.current.pos, count)) < 0.35;
+  /** At the front with the lid shut (either way up): hover tilts it, a click opens it or turns it back. */
   const frontShut = () => {
     const s = live.current;
-    return s.mode === "open" && s.caseState === "closed" && s.swap.from < 0 && index === wrap(Math.round(s.target), count);
+    return s.mode === "open" && s.caseState === "closed" && s.swap.from < 0 && chosen();
+  };
+  const isLid = (o: THREE.Object3D) => {
+    for (let n: THREE.Object3D | null = o; n; n = n.parent) if (n === lid.current) return true;
+    return false;
   };
 
   useFrame((state, raw) => {
     const dt = Math.min(raw, 0.05);
     const s = live.current;
     const g = place.current;
-    if (!g || !tilt.current || !spread.current || !caseRef.current || !spine.current || !spineMesh.current || !hinge.current || !cover.current) return;
+    if (!g || !tilt.current || !upright.current || !spread.current || !caseRef.current || !lid.current) return;
     const { width: vw, height: vh } = state.viewport;
     const L = layout(vw, vh);
-    const sel = index === wrap(Math.round(s.target), count);
+    const sel = chosen();
     const leaving = s.swap.from === index;
 
     const o = offsetOf(index, s.pos, count);
@@ -133,11 +236,16 @@ export function Album({ track, index, count, selected, live }: { track: Track; i
       if (s.swap.from >= 0) {
         // next / previous: the old one slides out one side as the new one slides in from the other
         const t = easeInOut(s.swap.t);
-        const travel = vw * 0.5 + L.w * L.k * 0.8;
+        const travel = vw * 0.5 + L.w * L.k * WIDE * 0.8;
         const k = leaving ? -t : 1 - t;
         x += s.swap.dir * k * travel;
         rotY = -s.swap.dir * k * 0.6;
         z -= Math.abs(k) * L.w * 0.8;
+      } else {
+        // turned over: half a turn about the upright, lifting toward you on the way round
+        const f = s.anim.flip;
+        rotY += Math.PI * f;
+        z += Math.sin(f * Math.PI) * L.w * 0.35;
       }
     } else {
       // the rest leave by the nearer edge, the inner ones a beat after the outer ones
@@ -157,61 +265,48 @@ export function Album({ track, index, count, selected, live }: { track: Track; i
     const h = s.hover.on && ((s.mode === "browse" && isCentre()) || frontShut()) ? s.hover : null;
     easing.dampE(tilt.current.rotation, [h ? -h.y * 0.2 : 0, h ? h.x * 0.2 : 0, 0], 0.18, dt);
 
-    // the spine folds flat and the cover turns over it: half a turn each, a full turn for the cover
+    // the lid swings over on its hinge to lie flat; the pair slides to stay centred, and on tall
+    // screens turns upright as it opens so the lid ends up above the base
     const open = sel && !leaving ? s.anim.hinge : 0;
-    const half = (-Math.PI / 2) * open;
-    if (L.narrow) {
-      spine.current.position.set(0, S / 2 + T, -T);
-      spine.current.rotation.set(half, 0, 0);
-      spineMesh.current.scale.set(S, T, SPINE);
-      spineMesh.current.position.set(0, -T / 2, SPINE / 2);
-      hinge.current.rotation.set(half, 0, 0);
-      cover.current.position.set(0, -(T + S / 2), -T / 2);
-      spread.current.position.set(0, -SHIFT * open, 0);
-    } else {
-      spine.current.position.set(-S / 2 - T, 0, -T);
-      spine.current.rotation.set(0, half, 0);
-      spineMesh.current.scale.set(T, S, SPINE);
-      spineMesh.current.position.set(T / 2, 0, SPINE / 2);
-      hinge.current.rotation.set(0, half, 0);
-      cover.current.position.set(T + S / 2, 0, -T / 2);
-      spread.current.position.set(SHIFT * open, 0, 0);
-    }
-    // the inside of the cover is seen upside down when it opens upwards
-    if (art) {
-      const turn = L.narrow ? Math.PI : 0;
-      if (art.inside.rotation !== turn) {
-        art.inside.center.set(0.5, 0.5);
-        art.inside.rotation = turn;
-      }
+    lid.current.rotation.y = -Math.PI * open;
+    spread.current.position.x = (CASE.hinge / 2) * (1 - open) + SHIFT * open;
+    upright.current.rotation.z = L.narrow ? (-Math.PI / 2) * open : 0;
+    if (detail) {
+      // turned upright, the booklet page and the tray side use their turned layouts so they still read
+      const inside = L.narrow ? detail.insideUpright : detail.inside;
+      const tray = L.narrow ? detail.trayUpright : detail.tray;
+      if (paper.inside.map !== inside) paper.inside.map = inside;
+      if (paper.tray.map !== tray) paper.tray.map = tray;
     }
 
-    // while the disc is turned, the sleeve backs away so the disc never cuts into it
+    // While the disc is being turned the case backs away, far enough for a full flip, and stays
+    // there until the disc has settled for a moment; then it comes back in once.
     const d = s.disc;
-    const discZ = H / 2 + 0.006 + (sel ? s.anim.lift * LIFT : 0);
+    const above = DISC_REST - Z.trayTop + (sel ? s.anim.lift * LIFT : 0);
     const lean = Math.max(Math.abs(Math.sin(d.yaw)), Math.abs(Math.sin(d.pitch)));
-    const need = sel ? Math.max(0, R * lean + 0.03 - discZ) : 0;
-    const want = sel && s.caseState !== "closed" && discBusy(d) ? Math.max(need, R * 0.7 - discZ) : 0;
-    easing.damp(recede.current, "v", want, 0.16, dt);
-    recede.current.v = Math.max(recede.current.v, need);
-    caseRef.current.position.z = -recede.current.v;
+    const need = sel ? Math.max(0, R * lean + 0.03 - above) : 0;
+    const r = recede.current;
+    if (sel && s.caseState !== "closed" && discBusy(d)) r.hold = HOLD;
+    else r.hold = Math.max(0, r.hold - dt);
+    easing.damp(r, "v", r.hold > 0 ? R + 0.04 - above : 0, 0.22, dt);
+    r.v = Math.max(r.v, need);
+    caseRef.current.position.z = -r.v;
 
-    // the disc's shadow on the tray: tight and dark while it rests, softer, wider and dropping away
-    // from the key light (above, in front) as it lifts and the sleeve backs off
+    // the disc's shadow on the tray: tight while it rests, softer and wider as it lifts away
     if (shadow.current) {
-      const gap = Math.max(0, d.z - H / 2) + recede.current.v;
-      const spread = 1 + gap * 0.9;
-      shadow.current.scale.set(R * 2.08 * spread, R * 2.08 * spread * (1 - 0.25 * lean), 1);
-      shadow.current.position.set(gap * 0.12, -gap * 0.32, 0.002);
-      shadowMat.opacity = sel ? 0.55 / (1 + gap * 2.2) : 0;
+      const gap = Math.max(0, d.z - DISC_REST) + r.v;
+      const spreadK = 1 + gap * 0.9;
+      shadow.current.scale.set(R * 2.08 * spreadK, R * 2.08 * spreadK * (1 - 0.25 * lean), 1);
+      shadow.current.position.set(gap * 0.12, -gap * 0.32, Z.trayTop + 0.002);
+      shadowMat.opacity = sel ? 0.5 / (1 + gap * 2.2) : 0;
     }
   });
 
   const move = (e: ThreeEvent<PointerEvent>) => {
     if (!tilt.current || !((live.current.mode === "browse" && isCentre()) || frontShut())) return;
     e.stopPropagation();
-    const p = tilt.current.worldToLocal(e.point.clone());
-    live.current.hover = { on: true, x: THREE.MathUtils.clamp(p.x / (S / 2), -1, 1), y: THREE.MathUtils.clamp(p.y / (S / 2), -1, 1) };
+    const q = tilt.current.worldToLocal(e.point.clone());
+    live.current.hover = { on: true, x: THREE.MathUtils.clamp(q.x / (CASE.w / 2), -1, 1), y: THREE.MathUtils.clamp(q.y / (S / 2), -1, 1) };
     document.body.style.cursor = "pointer";
   };
   const out = () => {
@@ -219,26 +314,33 @@ export function Album({ track, index, count, selected, live }: { track: Track; i
     live.current.hover.on = false;
     if (!live.current.disc.hover) document.body.style.cursor = "";
   };
-  const over = (e: ThreeEvent<PointerEvent>) => {
+  const openLid = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
     const s = live.current;
-    // the open cover's inside panel closes it again
-    if (s.mode === "open" && s.caseState === "open" && selected && e.object === cover.current) {
-      e.stopPropagation();
-      document.body.style.cursor = "pointer";
-    }
+    return s.mode === "open" && s.caseState === "open" && selected && isLid(e.object);
+  };
+  const over = (e: ThreeEvent<PointerEvent>) => {
+    // the open lid closes again
+    if (!openLid(e)) return;
+    e.stopPropagation();
+    document.body.style.cursor = "pointer";
   };
   const click = (e: ThreeEvent<MouseEvent>) => {
     const s = live.current;
     if (e.delta > 6) return;
+    const reset = () => {
+      e.stopPropagation();
+      s.hover.on = false;
+      document.body.style.cursor = "";
+    };
     if (s.mode === "browse" && isCentre()) {
-      e.stopPropagation();
-      s.hover.on = false;
-      document.body.style.cursor = "";
+      reset();
       s.open();
-    } else if (frontShut() || (s.mode === "open" && s.caseState === "open" && selected && e.object === cover.current)) {
-      e.stopPropagation();
-      s.hover.on = false;
-      document.body.style.cursor = "";
+    } else if (frontShut()) {
+      reset();
+      if (s.anim.flip > 0.5) s.turnOver();
+      else s.toggleCase();
+    } else if (openLid(e)) {
+      reset();
       s.toggleCase();
     }
   };
@@ -246,28 +348,36 @@ export function Album({ track, index, count, selected, live }: { track: Track; i
   return (
     <group ref={place}>
       <group ref={tilt} onPointerMove={move} onPointerOut={out} onPointerOver={over} onClick={click}>
-        <group ref={spread}>
-          <group ref={caseRef}>
-            {/* tray panel, its inner face at z = 0 */}
-            <mesh geometry={panel} material={mats.base} position={[0, 0, -T / 2]} />
-            <mesh material={hubPlastic} position={[0, 0, 0.006]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[R * 0.11, R * 0.12, 0.012, 32]} />
-            </mesh>
-            {selected && <mesh ref={shadow} material={shadowMat} position={[0, 0, 0.002]} geometry={UNIT_PLANE} raycast={() => null} />}
-            {/* spine, then the cover hinged on its far edge (both placed each frame) */}
-            <group ref={spine}>
-              <mesh ref={spineMesh} material={mats.spine}>
-                <boxGeometry args={[1, 1, 1]} />
-              </mesh>
-              <group ref={hinge} position={[0, 0, SPINE]}>
-                <mesh ref={cover} geometry={panel} material={mats.cover} />
+        <group ref={upright}>
+          <group ref={spread}>
+            <group ref={caseRef}>
+              {/* base: back plate, the insert lying on it with its spines up the sides, the tray over it */}
+              <mesh geometry={geo.backPlate} material={plate} raycast={NO_RAY} />
+              <mesh geometry={geo.inlay} material={inlayMats} raycast={NO_RAY} />
+              <mesh geometry={geo.spineL} material={paper.spine} raycast={NO_RAY} />
+              <mesh geometry={geo.spineR} material={paper.spine} raycast={NO_RAY} />
+              <mesh geometry={geo.trayPlate} material={trayMat} raycast={NO_RAY} />
+              <mesh geometry={geo.baseFrame} material={p.edge} raycast={NO_RAY} />
+              <mesh geometry={geo.hitBase} material={HIT} />
+              {selected && open && <mesh ref={shadow} material={shadowMat} geometry={UNIT_PLANE} raycast={NO_RAY} />}
+              {/* lid: turns about the hinge axis, with the booklet clipped under it */}
+              <group position={[HINGE.x, 0, HINGE.z]}>
+                <group ref={lid}>
+                  <group position={[-HINGE.x, 0, -HINGE.z]}>
+                    <mesh geometry={geo.booklet} material={bookMats} raycast={NO_RAY} />
+                    <mesh geometry={geo.lidPlate} material={plate} raycast={NO_RAY} />
+                    <mesh geometry={geo.lidFrame} material={p.edge} raycast={NO_RAY} />
+                    <mesh geometry={geo.hitLid} material={HIT} />
+                  </group>
+                </group>
               </group>
             </group>
+            {/* only the chosen album's disc is ever seen, and only once it is at the front */}
+            {selected && open && <Disc color={track.color} label={detail?.label ?? null} live={live} active />}
           </group>
-          {/* only the selected album's disc is ever seen (the others stay shut in their sleeves) */}
-          {selected && <Disc color={track.color} label={art?.label ?? null} live={live} active />}
         </group>
       </group>
     </group>
   );
 }
+

@@ -1,14 +1,14 @@
-// Textures. Album art comes from public/spotify-hits/<slug>/ when the file exists; anything missing
-// is drawn on a canvas from the track's data in the page's own fonts, so every album looks finished.
-// The disc label is always made from the front cover. Surface detail (paper grain, the print's dot
-// screen, the data side's tracks) is generated here too, so none of it is a download.
+// Textures. The front cover, back insert and disc label come from public/spotify-hits/<slug>/ when
+// the file exists, and are drawn on a canvas from the track's data otherwise. The booklet's inside
+// page and the tray side of the insert are always drawn: the album's colour as paper, with the song
+// details printed into it. Surface detail (paper grain, the print's dot screen, the disc's data side,
+// wear on the plastic) is generated here too, so none of it is a download.
 import * as THREE from "three";
 import { fileUrl, formatTime, type ArtFile, type Track } from "../data/tracks";
-import { R, S } from "./live";
+import { PAPER, R } from "./live";
 
-// drawn art sizes: the front (and the disc label made from it) is seen largest
+// drawn art size for the square pieces (front cover, booklet page, disc label)
 const ART = 1024;
-const PANEL = 768;
 
 function canvas(w: number, h = w) {
   const c = document.createElement("canvas");
@@ -24,6 +24,14 @@ function texture(src: HTMLCanvasElement | HTMLImageElement, color = true) {
   t.needsUpdate = true;
   return t;
 }
+
+/** A 1 px white image: stands in for art that has not arrived, so materials keep one shader throughout. */
+export const BLANK = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+})();
 
 function repeating(c: HTMLCanvasElement, n: number) {
   const t = texture(c, false);
@@ -115,15 +123,64 @@ export function softShadow() {
   return (shadow = texture(c));
 }
 
-// ---------- album art ----------
-
-export interface Art {
-  front: THREE.Texture;
-  back: THREE.Texture;
-  inside: THREE.Texture;
-  tray: THREE.Texture;
-  label: THREE.Texture;
+/** A small seeded random, so each album's marks are its own but the same on every visit. */
+export function seeded(seed: number) {
+  let a = seed * 2654435761;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
+
+/**
+ * Handling wear on one album's clear plastic, as roughness. Almost all of it is smooth; a case that
+ * has been handled has only a few marks: some faint hairlines, a couple of soft swirls from a cloth,
+ * a little dust, each case different. They only show where a reflection crosses them.
+ */
+export function plasticWear(seed: number) {
+  const rnd = seeded(seed);
+  const N = 512;
+  const [c, g] = canvas(N);
+  g.fillStyle = "rgb(20,20,20)";
+  g.fillRect(0, 0, N, N);
+  g.lineCap = "round";
+  const marks = 10 + Math.floor(rnd() * 16);
+  for (let i = 0; i < marks; i++) {
+    const x = rnd() * N;
+    const y = rnd() * N;
+    const v = 30 + rnd() * 22;
+    g.strokeStyle = `rgb(${v},${v},${v})`;
+    g.globalAlpha = 0.3 + rnd() * 0.5;
+    g.lineWidth = 0.5 + rnd() * 0.6;
+    g.beginPath();
+    if (rnd() < 0.3) {
+      // a cloth swirl: a short arc
+      const r = 20 + rnd() * 90;
+      const a = rnd() * Math.PI * 2;
+      g.arc(x, y, r, a, a + 0.3 + rnd() * 0.7);
+    } else {
+      const a = rnd() * Math.PI;
+      const l = 6 + Math.pow(rnd(), 2) * 70;
+      g.moveTo(x, y);
+      g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+    }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  const dust = 30 + Math.floor(rnd() * 50);
+  for (let i = 0; i < dust; i++) {
+    const v = 40 + rnd() * 40;
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(rnd() * N, rnd() * N, 1, 1);
+  }
+  const t = texture(c, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// ---------- album art ----------
 
 const font = (name: string) => {
   const el = document.querySelector("[data-sth]") ?? document.body;
@@ -139,10 +196,14 @@ const load = (url: string) =>
     img.src = url;
   });
 
-const ink = (hex: string) => {
+const fontsReady = () =>
+  Promise.all([document.fonts.load(`800 40px ${font("--sth-display")}`), document.fonts.load(`600 20px ${font("--sth-sans")}`), document.fonts.load(`500 20px ${font("--sth-mono")}`)]).catch(() => {});
+
+const light = (hex: string) => {
   const c = new THREE.Color(hex);
-  return c.r * 0.299 + c.g * 0.587 + c.b * 0.114 > 0.62 ? "#111111" : "#ffffff";
+  return c.r * 0.299 + c.g * 0.587 + c.b * 0.114 > 0.62;
 };
+const ink = (hex: string) => (light(hex) ? "#111111" : "#ffffff");
 const shade = (hex: string, k: number) => `#${new THREE.Color(hex).lerp(new THREE.Color(k < 0 ? "#000" : "#fff"), Math.abs(k)).getHexString()}`;
 
 function lines(g: CanvasRenderingContext2D, text: string, width: number) {
@@ -169,8 +230,8 @@ function fit(g: CanvasRenderingContext2D, text: string, family: string, weight: 
   return px;
 }
 
-function grainOver(g: CanvasRenderingContext2D, n: number, alpha: number) {
-  const img = g.getImageData(0, 0, n, n);
+function grainOver(g: CanvasRenderingContext2D, w: number, h: number, alpha: number) {
+  const img = g.getImageData(0, 0, w, h);
   for (let i = 0; i < img.data.length; i += 4) {
     const v = (Math.random() - 0.5) * 255 * alpha;
     img.data[i] += v;
@@ -180,166 +241,328 @@ function grainOver(g: CanvasRenderingContext2D, n: number, alpha: number) {
   g.putImageData(img, 0, 0);
 }
 
-function drawFront(t: Track) {
-  const n = ART;
-  const [c, g] = canvas(n);
-  const fg = ink(t.color);
-  const display = font("--sth-display");
-  const sans = font("--sth-sans");
-  const mono = font("--sth-mono");
-  g.fillStyle = t.color;
-  g.fillRect(0, 0, n, n);
-  const light = g.createRadialGradient(n * 0.25, n * 0.2, 0, n * 0.25, n * 0.2, n * 1.1);
-  light.addColorStop(0, "rgba(255,255,255,0.22)");
-  light.addColorStop(1, "rgba(0,0,0,0.35)");
-  g.fillStyle = light;
-  g.fillRect(0, 0, n, n);
-  // a large ring, the one shape every cover shares
-  g.strokeStyle = fg === "#ffffff" ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.14)";
-  g.lineWidth = n * 0.09;
-  g.beginPath();
-  g.arc(n * 0.78, n * 0.3, n * 0.36, 0, Math.PI * 2);
-  g.stroke();
-  g.fillStyle = fg;
-  g.font = `600 ${n * 0.03}px ${sans}`;
-  g.fillText(t.mainArtist.toUpperCase(), n * 0.07, n * 0.1);
-  g.font = `500 ${n * 0.026}px ${mono}`;
-  g.textAlign = "right";
-  g.fillText(`No. ${String(t.rank).padStart(2, "0")}`, n * 0.93, n * 0.1);
-  g.textAlign = "left";
-  const title = t.title.toUpperCase();
-  const px = fit(g, title, display, 800, n * 0.86, n * 0.2);
-  g.font = `800 ${px}px ${display}`;
-  const rows = lines(g, title, n * 0.86);
-  rows.forEach((row, i) => g.fillText(row, n * 0.07, n * 0.93 - (rows.length - 1 - i) * px * 0.9));
-  grainOver(g, n, 0.06);
+/**
+ * Uncoated stock in the album's colour: the base tone, soft clouding where the fibres bunch, and
+ * short fibres catching the light. Printing goes on top with `inked`, and `grainOver` last, so the
+ * grain runs through the type as it does through ink on real paper.
+ */
+function paper(g: CanvasRenderingContext2D, w: number, h: number, color: string) {
+  g.fillStyle = color;
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 70; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = (0.05 + Math.random() * 0.16) * w;
+    const cloud = g.createRadialGradient(x, y, 0, x, y, r);
+    cloud.addColorStop(0, Math.random() < 0.5 ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.04)");
+    cloud.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = cloud;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  g.lineWidth = 0.8;
+  for (let i = 0; i < 1400; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const a = Math.random() * Math.PI * 2;
+    const l = 3 + Math.random() * 10;
+    g.strokeStyle = Math.random() < 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+    g.beginPath();
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + Math.cos(a + 0.6) * l * 0.6, y + Math.sin(a + 0.6) * l * 0.6, x + Math.cos(a) * l, y + Math.sin(a) * l);
+    g.stroke();
+  }
+}
+
+/**
+ * Sets up printing on paper of `color`: dark ink multiplies into light stock; on dark stock the
+ * ink is a warm off-white, not pure white. A hair of blur is the ink spreading into the fibres.
+ */
+function inked(g: CanvasRenderingContext2D, color: string, alpha = 0.9) {
+  const onLight = light(color);
+  g.globalCompositeOperation = onLight ? "multiply" : "source-over";
+  g.fillStyle = g.strokeStyle = onLight ? shade(color, -0.78) : "#f3eee4";
+  g.globalAlpha = alpha;
+  g.shadowColor = g.fillStyle as string;
+  g.shadowBlur = 0.8;
+}
+const plain = (g: CanvasRenderingContext2D) => {
+  g.globalCompositeOperation = "source-over";
+  g.globalAlpha = 1;
+  g.shadowBlur = 0;
+};
+
+/**
+ * A canvas the shape of a face (w × h px) whose printing is laid out by `draw` in a frame of fw × fh.
+ * Upright, the frame is turned a quarter (fw = h, fh = w), for a face seen turned upright: the open
+ * case on tall screens, so the page still reads. The paper grain goes over last, through the type.
+ */
+function face(w: number, h: number, upright: boolean, grain: number, draw: (g: CanvasRenderingContext2D, fw: number, fh: number) => void) {
+  const [c, g] = canvas(w, h);
+  if (upright) {
+    g.translate(0, h);
+    g.rotate(-Math.PI / 2);
+    draw(g, h, w);
+  } else draw(g, w, h);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  plain(g);
+  grainOver(g, w, h, grain);
   return c;
 }
 
-function drawBack(t: Track) {
-  const n = PANEL;
-  const [c, g] = canvas(n);
-  const bg = shade(t.color, -0.35);
-  const fg = ink(bg);
+/** Pixel size for a face of `wMm` × `hMm`, `long` px along its longer side. */
+const px = (wMm: number, hMm: number, long: number) => (wMm >= hMm ? [long, Math.round((long * hMm) / wMm)] : [Math.round((long * wMm) / hMm), long]);
+
+/**
+ * A stand-in front cover, drawn at the booklet's shape. Each album gets its own motif (a ring, bands,
+ * its rank as an outline numeral, or a rising sun), placed by its own seed, so no two look alike.
+ */
+function drawFront(t: Track) {
+  const [w, h] = px(PAPER.bookW, PAPER.bookH, ART);
+  const [c, g] = canvas(w, h);
+  const rnd = seeded(t.rank * 31 + 7);
+  const fg = ink(t.color);
+  const soft = fg === "#ffffff" ? "rgba(255,255,255," : "rgba(0,0,0,";
+  const display = font("--sth-display");
   const sans = font("--sth-sans");
   const mono = font("--sth-mono");
-  g.fillStyle = bg;
-  g.fillRect(0, 0, n, n);
-  g.fillStyle = fg;
-  g.globalAlpha = 0.9;
-  g.font = `500 ${n * 0.03}px ${mono}`;
-  g.fillText("01.", n * 0.08, n * 0.12);
-  g.font = `600 ${n * 0.034}px ${sans}`;
-  g.fillText(t.title, n * 0.15, n * 0.12);
-  g.font = `400 ${n * 0.028}px ${mono}`;
-  g.textAlign = "right";
-  g.fillText(formatTime(t.durationMs), n * 0.92, n * 0.12);
-  g.textAlign = "left";
-  g.globalAlpha = 0.6;
-  g.font = `400 ${n * 0.022}px ${sans}`;
-  [`${t.album} · ${t.year}`, `Written by ${t.writers.join(", ")}`, `Produced by ${t.producers.join(", ")}`].forEach((s, i) => {
-    lines(g, s, n * 0.84).forEach((row, j) => g.fillText(row, n * 0.08, n * 0.2 + i * n * 0.075 + j * n * 0.03));
-  });
-  // barcode
-  g.globalAlpha = 1;
-  g.fillStyle = "#fff";
-  g.fillRect(n * 0.08, n * 0.78, n * 0.26, n * 0.13);
-  g.fillStyle = "#111";
-  let x = n * 0.095;
-  let seed = t.rank * 97;
-  while (x < n * 0.325) {
-    seed = (seed * 9301 + 49297) % 233280;
-    const w = 1 + (seed % 4) * 1.6;
-    g.fillRect(x, n * 0.79, w, n * 0.09);
-    x += w + 2 + (seed % 3);
+  const u = Math.min(w, h);
+  g.fillStyle = t.color;
+  g.fillRect(0, 0, w, h);
+  const gx = w * (0.15 + rnd() * 0.7);
+  const gy = h * (0.1 + rnd() * 0.4);
+  const glow = g.createRadialGradient(gx, gy, 0, gx, gy, u * 1.2);
+  glow.addColorStop(0, "rgba(255,255,255,0.2)");
+  glow.addColorStop(1, "rgba(0,0,0,0.35)");
+  g.fillStyle = glow;
+  g.fillRect(0, 0, w, h);
+  const motif = t.rank % 4;
+  if (motif === 0) {
+    g.strokeStyle = `${soft}0.15)`;
+    g.lineWidth = u * (0.05 + rnd() * 0.06);
+    g.beginPath();
+    g.arc(w * (0.45 + rnd() * 0.4), h * (0.2 + rnd() * 0.3), u * (0.2 + rnd() * 0.2), 0, Math.PI * 2);
+    g.stroke();
+  } else if (motif === 1) {
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.rotate(-0.5 + rnd() * 1);
+    g.fillStyle = `${soft}0.09)`;
+    for (let i = -6; i < 6; i++) g.fillRect(-w, i * u * 0.16, w * 2, u * (0.03 + rnd() * 0.05));
+    g.restore();
+  } else if (motif === 2) {
+    g.strokeStyle = `${soft}0.2)`;
+    g.lineWidth = u * 0.006;
+    g.font = `800 ${u * 0.85}px ${display}`;
+    g.textAlign = "right";
+    g.strokeText(String(t.rank).padStart(2, "0"), w * 1.02, h * 0.72);
+    g.textAlign = "left";
+  } else {
+    const sx = w * (0.3 + rnd() * 0.4);
+    for (let i = 5; i > 0; i--) {
+      g.fillStyle = `${soft}${0.035 * (6 - i)})`;
+      g.beginPath();
+      g.arc(sx, h * 0.62, u * 0.09 * i, Math.PI, 0);
+      g.fill();
+    }
   }
   g.fillStyle = fg;
-  g.globalAlpha = 0.6;
-  g.font = `400 ${n * 0.02}px ${mono}`;
+  g.font = `600 ${u * 0.03}px ${sans}`;
+  g.fillText(t.mainArtist.toUpperCase(), w * 0.07, h * 0.1);
+  g.font = `500 ${u * 0.026}px ${mono}`;
   g.textAlign = "right";
-  g.fillText(`℗ ${t.year} · ${t.mainArtist}`, n * 0.92, n * 0.9);
-  grainOver(g, n, 0.05);
-  return c;
-}
-
-function drawInside(t: Track) {
-  const n = PANEL;
-  const [c, g] = canvas(n);
-  const bg = shade(t.color, -0.15);
-  const fg = ink(bg);
-  const display = font("--sth-display");
-  const sans = font("--sth-sans");
-  g.fillStyle = bg;
-  g.fillRect(0, 0, n, n);
-  g.fillStyle = fg;
+  g.fillText(`No. ${String(t.rank).padStart(2, "0")}`, w * 0.93, h * 0.1);
+  g.textAlign = "left";
   const title = t.title.toUpperCase();
-  const px = fit(g, title, display, 800, n * 0.6, n * 0.1);
-  g.font = `800 ${px}px ${display}`;
-  const rows = lines(g, title, n * 0.6);
-  rows.forEach((row, i) => g.fillText(row, n * 0.09, n * 0.17 + i * px * 0.92));
-  let y = n * 0.17 + rows.length * px * 0.92 + n * 0.03;
-  g.fillRect(n * 0.09, y, n * 0.05, 3);
-  y += n * 0.08;
-  const block = (label: string, names: string[]) => {
-    g.globalAlpha = 0.55;
-    g.font = `600 ${n * 0.02}px ${sans}`;
-    g.fillText(label.toUpperCase(), n * 0.09, y);
-    g.globalAlpha = 0.95;
-    g.font = `500 ${n * 0.027}px ${sans}`;
-    names.forEach((name, i) => g.fillText(name, n * 0.09, y + n * 0.045 + i * n * 0.038));
-    y += n * 0.045 + names.length * n * 0.038 + n * 0.04;
-  };
-  block("Written by", t.writers.slice(0, 6));
-  block("Produced by", t.producers.slice(0, 4));
-  g.globalAlpha = 0.55;
-  g.font = `400 ${n * 0.022}px ${sans}`;
-  g.fillText(`${t.album} · ${t.year}`, n * 0.09, n * 0.93);
-  grainOver(g, n, 0.05);
+  const size = fit(g, title, display, 800, w * 0.86, u * 0.2);
+  g.font = `800 ${size}px ${display}`;
+  const rows = lines(g, title, w * 0.86);
+  rows.forEach((row, i) => g.fillText(row, w * 0.07, h * 0.92 - (rows.length - 1 - i) * size * 0.9));
+  grainOver(g, w, h, 0.06);
   return c;
 }
 
 /**
- * The tray panel under the disc: the album colour, darker, with the shallow round recess the disc
- * sits in pressed into the card (a slightly darker well with a thin lit edge) and the hub's seat.
+ * The booklet's inside page, seen when the case opens: printed on the album's colour like the
+ * reference's tracklist page. The track with a dotted leader to its length, the credits in two
+ * columns, and the title set big at the foot.
  */
-function drawTray(t: Track, discRadius: number) {
-  const n = PANEL;
-  const [c, g] = canvas(n);
-  const cx = n / 2;
-  g.fillStyle = shade(t.color, -0.5);
-  g.fillRect(0, 0, n, n);
-  const glow = g.createRadialGradient(cx, cx, n * 0.05, cx, cx, n * 0.7);
-  glow.addColorStop(0, "rgba(255,255,255,0.06)");
-  glow.addColorStop(1, "rgba(0,0,0,0.22)");
-  g.fillStyle = glow;
-  g.fillRect(0, 0, n, n);
-  const rr = discRadius * n * 1.03;
-  const well = g.createRadialGradient(cx, cx, rr * 0.2, cx, cx, rr);
-  well.addColorStop(0, "rgba(0,0,0,0.06)");
-  well.addColorStop(0.93, "rgba(0,0,0,0.14)");
-  well.addColorStop(1, "rgba(0,0,0,0.28)");
-  g.fillStyle = well;
-  g.beginPath();
-  g.arc(cx, cx, rr, 0, Math.PI * 2);
-  g.fill();
-  g.lineWidth = n * 0.003;
-  g.strokeStyle = "rgba(255,255,255,0.14)";
-  g.beginPath();
-  g.arc(cx, cx + n * 0.001, rr, Math.PI * 0.1, Math.PI * 0.9); // lit lower lip
-  g.stroke();
-  g.strokeStyle = "rgba(255,255,255,0.1)";
-  g.beginPath();
-  g.arc(cx, cx, discRadius * n * 0.16, 0, Math.PI * 2);
-  g.stroke();
-  grainOver(g, n, 0.05);
+function drawInside(t: Track, upright: boolean) {
+  const [w, h] = px(PAPER.bookW, PAPER.bookH, ART);
+  const stock = shade(t.color, -0.12);
+  const display = font("--sth-display");
+  const sans = font("--sth-sans");
+  const mono = font("--sth-mono");
+  return face(w, h, upright, 0.045, (g, fw, fh) => {
+    const u = Math.min(fw, fh);
+    paper(g, fw, fh, stock);
+    const m = u * 0.08;
+    inked(g, stock, 0.7);
+    g.font = `600 ${u * 0.019}px ${sans}`;
+    g.fillText(`NO. ${String(t.rank).padStart(2, "0")}  ·  SPOTIFY ALL-TIME TOP 10`, m, m);
+    g.textAlign = "right";
+    g.fillText(String(t.year), fw - m, m);
+    g.textAlign = "left";
+    // the track, with a dotted leader to its length
+    inked(g, stock, 0.92);
+    const y0 = m + u * 0.09;
+    g.font = `500 ${u * 0.026}px ${mono}`;
+    g.fillText("01", m, y0);
+    g.font = `600 ${u * 0.032}px ${sans}`;
+    g.fillText(t.title, m + u * 0.06, y0);
+    const tw = g.measureText(t.title).width;
+    g.font = `500 ${u * 0.026}px ${mono}`;
+    g.textAlign = "right";
+    g.fillText(formatTime(t.durationMs), fw - m, y0);
+    g.textAlign = "left";
+    g.globalAlpha = 0.45;
+    for (let x = m + u * 0.06 + tw + u * 0.02; x < fw - m - u * 0.09; x += u * 0.012) g.fillRect(x, y0 - 3, 2.5, 2.5);
+    // credits, two columns
+    const col = (label: string, names: string[], x: number, y: number) => {
+      inked(g, stock, 0.6);
+      g.font = `700 ${u * 0.017}px ${sans}`;
+      g.fillText(label.toUpperCase(), x, y);
+      inked(g, stock, 0.9);
+      g.font = `500 ${u * 0.024}px ${sans}`;
+      names.forEach((name, i) => g.fillText(name, x, y + u * 0.04 + i * u * 0.034));
+    };
+    const yc = y0 + u * 0.1;
+    col("Written by", t.writers.slice(0, 7), m, yc);
+    col("Produced by", t.producers.slice(0, 5), fw * 0.54, yc);
+    inked(g, stock, 0.55);
+    g.font = `400 ${u * 0.02}px ${sans}`;
+    g.fillText(`${t.album}  ·  ${t.mainArtist}`, m, yc + u * 0.33);
+    // the title, big, at the foot
+    inked(g, stock, 0.95);
+    const big = t.title.toUpperCase();
+    const size = fit(g, big, display, 800, fw - 2 * m, u * 0.15, 2);
+    g.font = `800 ${size}px ${display}`;
+    const rows = lines(g, big, fw - 2 * m);
+    rows.forEach((row, i) => g.fillText(row, m - size * 0.04, fh - m - (rows.length - 1 - i) * size * 0.88));
+  });
+}
+
+/**
+ * The front of the back insert, seen round the disc through the clear tray. The disc covers the
+ * middle, so the printing sits in the corners: artist and rank at the top, title and year below.
+ */
+function drawTray(t: Track, upright: boolean) {
+  const [w, h] = px(PAPER.inlayW, PAPER.inlayH, 1104);
+  const stock = shade(t.color, -0.32);
+  const sans = font("--sth-sans");
+  const mono = font("--sth-mono");
+  const display = font("--sth-display");
+  const disc = (2 * R) / Math.max(PAPER.inlayW, PAPER.inlayH);
+  return face(w, h, upright, 0.045, (g, fw, fh) => {
+    const u = Math.max(fw, fh);
+    paper(g, fw, fh, stock);
+    // a faint printed ring where the disc sits, as some inserts carry
+    inked(g, stock, 0.12);
+    g.lineWidth = u * 0.004;
+    g.beginPath();
+    g.arc(fw / 2, fh / 2, (disc * u) / 2 + u * 0.012, 0, Math.PI * 2);
+    g.stroke();
+    const m = u * 0.035;
+    inked(g, stock, 0.75);
+    g.font = `700 ${u * 0.017}px ${sans}`;
+    g.fillText(t.mainArtist.toUpperCase(), m, m + u * 0.012);
+    g.textAlign = "right";
+    g.font = `500 ${u * 0.016}px ${mono}`;
+    g.fillText(`No. ${String(t.rank).padStart(2, "0")}`, fw - m, m + u * 0.012);
+    g.textAlign = "left";
+    inked(g, stock, 0.9);
+    g.font = `800 ${u * 0.03}px ${display}`;
+    g.fillText(t.title.toUpperCase(), m, fh - m, fw * 0.4);
+    inked(g, stock, 0.6);
+    g.textAlign = "right";
+    g.font = `400 ${u * 0.015}px ${mono}`;
+    g.fillText(`℗ ${t.year}  ·  ${formatTime(t.durationMs)}`, fw - m, fh - m);
+  });
+}
+
+
+/**
+ * The whole back insert as printed flat (spine | back | spine), used when there is no back.webp:
+ * the track and credits on the back panel, a barcode, and the title and artist up each spine.
+ */
+function drawBack(t: Track, spineShare: number) {
+  const w = 1200;
+  const h = Math.round(w * (118 / 150));
+  const [c, g] = canvas(w, h);
+  const stock = shade(t.color, -0.22);
+  const sans = font("--sth-sans");
+  const mono = font("--sth-mono");
+  const display = font("--sth-display");
+  paper(g, w, h, stock);
+  const sp = spineShare * w;
+  // spines: a shade darker, with the title and artist reading up them
+  g.fillStyle = "rgba(0,0,0,0.12)";
+  g.fillRect(0, 0, sp, h);
+  g.fillRect(w - sp, 0, sp, h);
+  for (const x of [sp / 2, w - sp / 2]) {
+    g.save();
+    g.translate(x, h / 2);
+    g.rotate(-Math.PI / 2);
+    inked(g, stock, 0.9);
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `700 ${sp * 0.42}px ${sans}`;
+    g.fillText(`${t.mainArtist.toUpperCase()}   ${t.title.toUpperCase()}`, 0, 0, h * 0.9);
+    g.restore();
+  }
+  plain(g);
+  const x0 = sp + w * 0.05;
+  const x1 = w - sp - w * 0.05;
+  inked(g, stock, 0.92);
+  g.font = `800 ${w * 0.05}px ${display}`;
+  g.fillText(t.title.toUpperCase(), x0, h * 0.16);
+  g.font = `600 ${w * 0.02}px ${sans}`;
+  g.fillText(t.mainArtist, x0, h * 0.22);
+  inked(g, stock, 0.85);
+  g.font = `500 ${w * 0.017}px ${mono}`;
+  g.fillText("01", x0, h * 0.34);
+  g.font = `500 ${w * 0.019}px ${sans}`;
+  g.fillText(t.title, x0 + w * 0.04, h * 0.34);
+  g.textAlign = "right";
+  g.font = `500 ${w * 0.017}px ${mono}`;
+  g.fillText(formatTime(t.durationMs), x1, h * 0.34);
+  g.textAlign = "left";
+  inked(g, stock, 0.6);
+  g.font = `400 ${w * 0.014}px ${sans}`;
+  [`Written by ${t.writers.join(", ")}`, `Produced by ${t.producers.join(", ")}`, `${t.album} · ${t.year}`].forEach((s, i) => {
+    lines(g, s, x1 - x0).forEach((row, j) => g.fillText(row, x0, h * 0.45 + i * h * 0.07 + j * h * 0.03));
+  });
+  plain(g);
+  // barcode on a white patch
+  const bx = x0;
+  const by = h * 0.74;
+  g.fillStyle = "#f4f1ea";
+  g.fillRect(bx, by, w * 0.2, h * 0.15);
+  g.fillStyle = "#111";
+  let x = bx + w * 0.012;
+  let seed = t.rank * 97;
+  while (x < bx + w * 0.188) {
+    seed = (seed * 9301 + 49297) % 233280;
+    const bw = 1 + (seed % 4) * 1.4;
+    g.fillRect(x, by + h * 0.015, bw, h * 0.1);
+    x += bw + 2 + (seed % 3);
+  }
+  inked(g, stock, 0.6);
+  g.textAlign = "right";
+  g.font = `400 ${w * 0.013}px ${mono}`;
+  g.fillText(`℗ ${t.year} ${t.mainArtist}  ·  Made for Spotify Top Hits`, x1, h * 0.88);
+  plain(g);
+  grainOver(g, w, h, 0.045);
   return c;
 }
 
-/** The disc print: the front cover filling the disc, with the title and artist set on a line, as on the reference. */
-function drawLabel(t: Track, front: CanvasImageSource) {
+/** The disc print when there is no disc.webp: the middle square of the front cover filling the disc, with the title and artist set on a line. */
+function drawLabel(t: Track, front: HTMLImageElement | HTMLCanvasElement) {
   const n = ART;
   const [c, g] = canvas(n);
-  g.drawImage(front, 0, 0, n, n);
+  const fw = front.width;
+  const fh = front.height;
+  const side = Math.min(fw, fh);
+  g.drawImage(front, (fw - side) / 2, (fh - side) / 2, side, side, 0, 0, n, n);
   // ink on metal reads a little darker and flatter than on card
   g.fillStyle = "rgba(0,0,0,0.12)";
   g.fillRect(0, 0, n, n);
@@ -349,25 +572,123 @@ function drawLabel(t: Track, front: CanvasImageSource) {
   g.shadowColor = "rgba(0,0,0,0.35)";
   g.shadowBlur = 6;
   g.textAlign = "center";
-  const line = `${t.title.toUpperCase()}   ·   ${t.mainArtist.toUpperCase()}`;
-  g.fillText(line, n / 2, n * 0.27, n * 0.6);
+  g.fillText(`${t.title.toUpperCase()}   ·   ${t.mainArtist.toUpperCase()}`, n / 2, n * 0.27, n * 0.6);
   return c;
 }
 
-/** Everything one album needs. Real images where they exist, drawn ones otherwise. */
-export async function buildArt(t: Track): Promise<Art> {
-  const fam = font("--sth-display");
-  await Promise.all([document.fonts.load(`800 40px ${fam}`), document.fonts.load(`600 20px ${font("--sth-sans")}`), document.fonts.load(`500 20px ${font("--sth-mono")}`)]).catch(() => {});
-  const get = (f: ArtFile, on: boolean) => (on ? load(fileUrl(t, f)) : Promise.resolve(null));
-  const [fi, bi, ii] = await Promise.all([get("front.webp", t.files.front), get("back.webp", t.files.back), get("inside.webp", t.files.inside)]);
-  const front = fi ?? drawFront(t);
-  return {
-    front: texture(front),
-    back: texture(bi ?? drawBack(t)),
-    inside: texture(ii ?? drawInside(t)),
-    tray: texture(drawTray(t, R / S)),
-    label: texture(drawLabel(t, front)),
-  };
+const get = (t: Track, f: ArtFile, on: boolean) => (on ? load(fileUrl(t, f)) : Promise.resolve(null));
+
+/** Each album's front cover, loaded or drawn once and shared by the 3D booklet and the page backdrop. */
+const fronts = new Map<string, Promise<HTMLImageElement | HTMLCanvasElement>>();
+function frontSource(t: Track) {
+  let p = fronts.get(t.slug);
+  if (!p) {
+    p = fontsReady().then(async () => (await get(t, "front.webp", t.files.front)) ?? drawFront(t));
+    fronts.set(t.slug, p);
+  }
+  return p;
 }
 
-export const disposeArt = (a: Art | null) => a && Object.values(a).forEach((t) => t.dispose());
+const backdrops = new Map<string, Promise<string>>();
+/** A small image of the front cover for the page behind the open album (blurred there, so it can be small). */
+export function frontBackdrop(t: Track) {
+  let p = backdrops.get(t.slug);
+  if (!p) {
+    p = frontSource(t).then((src) => {
+      const [c, g] = canvas(512, Math.round((512 * src.height) / src.width));
+      g.drawImage(src, 0, 0, c.width, c.height);
+      return c.toDataURL("image/jpeg", 0.8);
+    });
+    backdrops.set(t.slug, p);
+  }
+  return p;
+}
+
+/** What every album needs, even in the carousel: its front cover (the image, or one drawn). */
+export interface FrontArt {
+  front: THREE.Texture;
+  source: HTMLImageElement | HTMLCanvasElement;
+}
+export async function buildFront(t: Track): Promise<FrontArt> {
+  const source = await frontSource(t);
+  const front = texture(source);
+  // the booklet is a little wider than tall; a square image fills it across and loses a sliver top and bottom
+  const want = PAPER.bookH / PAPER.bookW;
+  const have = source.height / source.width;
+  if (have > want) {
+    front.repeat.y = want / have;
+    front.offset.y = (1 - front.repeat.y) / 2;
+  } else if (have < want) {
+    front.repeat.x = have / want;
+    front.offset.x = (1 - front.repeat.x) / 2;
+  }
+  return { front, source };
+}
+
+/**
+ * What only the open album needs, made when it is chosen and freed when it is not: the booklet's
+ * inside page and the tray side of the insert (both always drawn, in two layouts: as they lie, and
+ * turned for the upright open case on tall screens), the back insert (the image, or drawn) with its
+ * back panel cut from it, and the disc label.
+ */
+export interface DetailArt {
+  inside: THREE.Texture;
+  insideUpright: THREE.Texture;
+  tray: THREE.Texture;
+  trayUpright: THREE.Texture;
+  /** The whole insert, spine | back | spine, for the spines. */
+  insert: THREE.Texture;
+  /** Just the back panel of it, for the back face. */
+  back: THREE.Texture;
+  label: THREE.Texture;
+}
+/** Waits for a quiet moment, so each heavy drawing step runs between frames instead of inside one. */
+const idle = () =>
+  new Promise<void>((done) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => done(), { timeout: 250 }) : setTimeout(done, 16)));
+
+async function buildDetail(t: Track, front: FrontArt["source"]): Promise<DetailArt> {
+  await fontsReady();
+  const [bi, di] = await Promise.all([get(t, "back.webp", t.files.back), get(t, "disc.webp", t.files.disc)]);
+  const total = PAPER.inlayW + 2 * PAPER.spine;
+  // one piece per quiet moment: each is a few tens of milliseconds of canvas work
+  await idle();
+  const insert = texture(bi ?? drawBack(t, PAPER.spine / total));
+  const back = insert.clone();
+  back.repeat.x = PAPER.inlayW / total;
+  back.offset.x = PAPER.spine / total;
+  back.needsUpdate = true;
+  await idle();
+  const inside = texture(drawInside(t, false));
+  await idle();
+  const insideUpright = texture(drawInside(t, true));
+  await idle();
+  const tray = texture(drawTray(t, false));
+  await idle();
+  const trayUpright = texture(drawTray(t, true));
+  await idle();
+  const label = texture(di ?? drawLabel(t, front));
+  return { inside, insideUpright, tray, trayUpright, insert, back, label };
+}
+
+/** The last few albums' detail art, kept so going back to one is instant; the oldest is freed. */
+const details = new Map<string, Promise<DetailArt>>();
+const KEEP = 3;
+export function detailArt(t: Track, front: FrontArt["source"]) {
+  const hit = details.get(t.slug);
+  if (hit) {
+    details.delete(t.slug);
+    details.set(t.slug, hit);
+    return hit;
+  }
+  const made = buildDetail(t, front);
+  details.set(t.slug, made);
+  while (details.size > KEEP) {
+    const [slug, old] = details.entries().next().value!;
+    details.delete(slug);
+    old.then(disposeArt);
+  }
+  return made;
+}
+
+export const disposeArt = (a: FrontArt | DetailArt | null) =>
+  a && Object.values(a).forEach((t) => t instanceof THREE.Texture && t.dispose());

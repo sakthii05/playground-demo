@@ -1,103 +1,178 @@
 "use client";
-// Two loose pen loops round the disc while it is hovered or turned, as in the reference: each draws
-// itself on from the top left, then wipes away from where it started and draws again. Letting go
-// wipes them off. Done with a dash the length of the whole line, slid along it.
-import { useRef } from "react";
+// Two pen loops round the disc while it is hovered or turned, drawn the way the reference does it:
+// a "line boil". About fourteen times a second each loop is redrawn by hand, a little differently:
+// its bumps shift, its start creeps on round the disc, its size breathes. Each loop goes a little
+// over one full turn, so the ends overlap and there is never a gap, and the stroke swells in the
+// middle and tapers to a point at both ends, like a pen.
+// Arriving, the loops draw themselves on from their start; leaving, they are wiped off from it.
+// Built as flat ribbons (not GL lines) so the width can vary along the stroke.
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { Line } from "@react-three/drei";
-import type { Line2 } from "three-stdlib";
 import { R } from "./live";
 
-interface Loop {
-  points: [number, number, number][];
-  length: number;
+/** Spotify's green, a step deeper than the UI green so the stroke reads as ink, not light. */
+const INK = "#1db954";
+const N = 220; // points along a loop
+const TICK = 1 / 14; // seconds between redraws
+const WIDTH = R * 0.016; // widest part of the stroke
+const HARMONICS = [2, 3, 4, 5, 7];
+
+interface Hand {
+  radius: number;
+  amps: number[];
+  phases: number[];
+  start: number; // angle the pen starts at
+  turns: number; // a little over one
+  drift: number; // the pen ends a little further out (or in) than it starts
+  squash: number;
+  press: number; // phase of the pressure wobble along the stroke
 }
 
-/** One hand-drawn loop: a little over a full turn, its radius wandering and the centre off true. */
-function loop(seed: number, radius: number, turns: number, start: number): Loop {
-  const pts: [number, number, number][] = [];
-  const N = 240;
-  const cx = Math.sin(seed * 3.1) * 0.025 * R;
-  const cy = Math.cos(seed * 1.7) * 0.03 * R;
-  let length = 0;
-  for (let i = 0; i <= N; i++) {
-    const k = i / N;
-    const a = start + k * turns * Math.PI * 2;
-    // the pen drifts outward a little as it goes round, and wobbles
-    const r = radius * (1 + 0.035 * k + 0.018 * Math.sin(a * 2 + seed) + 0.009 * Math.sin(a * 5 + seed * 2));
-    const p: [number, number, number] = [cx + Math.cos(a) * r * 1.02, cy + Math.sin(a) * r * 0.98, 0];
-    if (i) length += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]);
-    pts.push(p);
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+function newHand(radius: number, start: number): Hand {
+  return {
+    radius,
+    amps: HARMONICS.map((k) => rand(0.004, 0.022) / Math.sqrt(k / 2)),
+    phases: HARMONICS.map(() => rand(0, Math.PI * 2)),
+    start,
+    turns: rand(1.06, 1.18),
+    drift: rand(-0.035, 0.045),
+    squash: rand(0.97, 1.03),
+    press: rand(0, Math.PI * 2),
+  };
+}
+
+/** The next redraw: the same loop by the same hand, but not traced exactly. */
+function nextHand(h: Hand, base: number): Hand {
+  return {
+    radius: base * rand(0.995, 1.012),
+    amps: h.amps.map((a, i) => a * 0.55 + (rand(0.004, 0.022) / Math.sqrt(HARMONICS[i] / 2)) * 0.45),
+    phases: h.phases.map((p) => p + rand(-0.5, 0.5)),
+    start: h.start + rand(0.12, 0.32), // creeps on round the disc
+    turns: h.turns * 0.6 + rand(1.06, 1.18) * 0.4,
+    drift: h.drift * 0.5 + rand(-0.035, 0.045) * 0.5,
+    squash: h.squash * 0.6 + rand(0.97, 1.03) * 0.4,
+    press: h.press + rand(-0.4, 0.4),
+  };
+}
+
+/** Writes one loop as a ribbon: two vertices per point, either side of the line. */
+function trace(h: Hand, out: Float32Array) {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < N; i++) {
+    const k = i / (N - 1);
+    const a = h.start + k * h.turns * Math.PI * 2;
+    let r = h.radius * (1 + h.drift * k);
+    HARMONICS.forEach((m, j) => (r += h.radius * h.amps[j] * Math.sin(m * a + h.phases[j])));
+    pts.push([Math.cos(a) * r * h.squash, Math.sin(a) * r / h.squash]);
   }
-  return { points: pts, length };
+  for (let i = 0; i < N; i++) {
+    const k = i / (N - 1);
+    const [x, y] = pts[i];
+    const [px, py] = pts[Math.max(0, i - 1)];
+    const [nx, ny] = pts[Math.min(N - 1, i + 1)];
+    let tx = nx - px;
+    let ty = ny - py;
+    const len = Math.hypot(tx, ty) || 1;
+    tx /= len;
+    ty /= len;
+    // pen pressure: tapered ends, a fuller middle that comes and goes
+    const taper = Math.min(1, k / 0.14) * Math.min(1, (1 - k) / 0.18);
+    const w = (WIDTH / 2) * Math.sqrt(taper) * (0.72 + 0.28 * Math.sin(k * 9 + h.press));
+    out.set([x - ty * w, y + tx * w, 0, x + ty * w, y - tx * w, 0], i * 6);
+  }
 }
 
-const LOOPS = [loop(1, R * 1.06, 1.12, Math.PI * 0.8), loop(2.4, R * 1.1, 1.06, Math.PI * 0.95)];
-const DRAW = 0.9; // seconds to draw a loop on
-const HOLD = 0.5;
-const WIPE = 0.8;
+function ribbon() {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 6), 3));
+  const idx: number[] = [];
+  for (let i = 0; i < N - 1; i++) {
+    const a = i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  g.setIndex(idx);
+  return g;
+}
+
+const LOOPS = [
+  { radius: R * 1.05, start: Math.PI * 0.75 },
+  { radius: R * 1.09, start: Math.PI * 1.55 },
+];
+/** Draw-on and wipe speeds, in strokes a second. */
+const DRAW = 1 / 0.55;
+const WIPE = 1 / 0.4;
 
 export function Scribble({ on }: { on: () => boolean }) {
-  const refs = useRef<(Line2 | null)[]>([]);
-  const t = useRef({ phase: 0, active: false });
+  const meshes = useRef<(THREE.Mesh | null)[]>([]);
+  const geos = useMemo(() => LOOPS.map(ribbon), []);
+  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: INK, side: THREE.DoubleSide, toneMapped: false }), []);
+  const state = useRef({ hands: LOOPS.map((l) => newHand(l.radius, l.start)), clock: 0, head: 0, tail: 0 });
+  useEffect(
+    () => () => {
+      geos.forEach((g) => g.dispose());
+      material.dispose();
+    },
+    [geos, material],
+  );
 
   useFrame((_, raw) => {
     const dt = Math.min(raw, 0.05);
-    const s = t.current;
+    const s = state.current;
     const wanted = on();
-    if (wanted) s.active = true;
-    if (!s.active) return;
-    const cycle = DRAW + HOLD + WIPE;
-    if (wanted) s.phase = (s.phase + dt) % cycle;
-    else {
-      // let go: jump to the wipe and run it out fast
-      if (s.phase < DRAW + HOLD) s.phase = DRAW + HOLD + WIPE * (1 - Math.min(1, s.phase / DRAW));
-      s.phase += dt * 2;
-      if (s.phase >= cycle) {
-        s.phase = 0;
-        s.active = false;
+    if (wanted) {
+      // arriving (or coming back mid-wipe): draw on from the start
+      if (s.tail > 0) {
+        s.head = 0;
+        s.tail = 0;
       }
+      s.head = Math.min(1, s.head + dt * DRAW);
+    } else if (s.head > 0) {
+      s.tail = Math.min(s.head, s.tail + dt * WIPE);
+      if (s.tail >= s.head) s.head = s.tail = 0;
     }
-    LOOPS.forEach((l, i) => {
-      const line = refs.current[i];
-      if (!line) return;
-      // the second loop runs a beat behind the first
-      const p = Math.max(0, s.phase - i * 0.18);
-      const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 2.2);
-      const head = s.active ? ease(p / DRAW) : 0;
-      const tail = s.active ? ease((p - DRAW - HOLD) / WIPE) : 0;
-      const m = line.material;
-      const shown = Math.max(0, head - tail);
-      line.visible = shown > 0.002;
-      // show only [tail, head] of the line: a dash that long, starting at tail
-      m.dashSize = Math.max(1e-4, shown * l.length);
-      m.gapSize = l.length * 2;
-      m.dashOffset = -tail * l.length;
+    const shown = s.head > 0;
+    meshes.current.forEach((m) => m && (m.visible = shown));
+    if (!shown) {
+      s.clock = TICK; // so the first frame shown is drawn straight away
+      return;
+    }
+
+    s.clock += dt;
+    const redraw = s.clock >= TICK;
+    if (redraw) {
+      s.clock %= TICK;
+      s.hands = s.hands.map((h, i) => nextHand(h, LOOPS[i].radius));
+    }
+    // the second loop is a beat behind the first as they draw on
+    geos.forEach((g, i) => {
+      if (redraw || s.head < 1 || s.tail > 0) {
+        if (redraw) {
+          trace(s.hands[i], g.attributes.position.array as Float32Array);
+          g.attributes.position.needsUpdate = true;
+        }
+        const head = Math.max(0, Math.min(1, s.head * 1.15 - i * 0.15));
+        const tail = Math.max(0, Math.min(1, s.tail * 1.15 - i * 0.15));
+        const from = Math.floor(tail * (N - 1));
+        const to = Math.floor(head * (N - 1));
+        g.setDrawRange(from * 6, Math.max(0, to - from) * 6);
+      }
     });
   });
 
   return (
-    // (Line hands its other props to the material too, so visibility and picking are set on the object)
-    <group>
-      {LOOPS.map((l, i) => (
-        <Line
+    <group position={[0, 0, 0.002]}>
+      {geos.map((g, i) => (
+        <mesh
           key={i}
-          ref={(r) => {
-            const line = r as unknown as Line2 | null;
-            refs.current[i] = line;
-            if (line) {
-              line.raycast = () => {};
-              line.visible = false;
-            }
-          }}
-          points={l.points}
-          color="#ffffff"
-          lineWidth={1.4}
-          transparent
-          opacity={0.85}
-          dashed
-          dashSize={0.0001}
-          gapSize={l.length * 2}
+          geometry={g}
+          material={material}
+          visible={false}
+          frustumCulled={false}
+          raycast={() => {}}
+          ref={(m) => void (meshes.current[i] = m)}
         />
       ))}
     </group>

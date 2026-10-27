@@ -2,19 +2,22 @@
 // published for its 20th anniversary (April 2026).
 //
 // Adding a song: add an entry here and a folder public/spotify-hits/<slug>/ with any of
-//   front.webp   front cover, square, 1500 × 1500 (also the blurred page background when open)
-//   back.webp    back cover, square, 1500 × 1500
-//   inside.webp  inside of the front cover (left panel when open), square, 1500 × 1500
+//   front.webp   booklet front cover, 1200 × 1200 (also the blurred page background when open,
+//                and the disc label when there is no disc.webp)
+//   back.webp    the back insert as printed flat, 1500 × 1180: a 60 px spine at each side and the
+//                1380 px back panel between them
+//   disc.webp    the disc label, 1200 × 1200, round art filling the square
 //   audio.mp3    the song, 128–192 kbps
 //   lyrics.lrc   time-synced lyrics ([mm:ss.xx] line)
-// then switch on the matching flag in `files`. Anything missing is drawn from the data in `color`,
-// and the disc label is always made from the front cover.
+// then switch on the matching flag in `files`. Anything missing is drawn from the data in `color`.
+// The booklet's inside page and the tray side of the insert are always drawn: the album's colour as
+// paper, with these details printed on it.
 //
 // Credits are the commonly published songwriting and production credits; check them against the
 // release before shipping. Stream counts are estimates from third-party trackers (late 2025) until
 // they are replaced with Spotify's own figures.
 
-export type ArtFile = "front.webp" | "back.webp" | "inside.webp";
+export type ArtFile = "front.webp" | "back.webp" | "disc.webp";
 
 export interface Track {
   rank: number;
@@ -35,11 +38,13 @@ export interface Track {
   durationMs: number;
   /** Base colour of the album: the sleeve's card, drawn art when an image is missing, the page tint. */
   color: string;
+  /** The jewel case's disc tray: clear (the insert shows through round the disc) or black. */
+  tray: "clear" | "black";
   /** Which files exist in public/spotify-hits/<slug>/. */
-  files: { front: boolean; back: boolean; inside: boolean; audio: boolean; lyrics: boolean };
+  files: { front: boolean; back: boolean; disc: boolean; audio: boolean; lyrics: boolean };
 }
 
-const NONE = { front: false, back: false, inside: false, audio: false, lyrics: false };
+const NONE = { front: false, back: false, disc: false, audio: false, lyrics: false };
 
 export const TRACKS: Track[] = [
   {
@@ -58,6 +63,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 200040,
     color: "#c4122f",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -76,6 +82,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 233713,
     color: "#3fa7d6",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -94,6 +101,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 240400,
     color: "#8b9099",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -112,7 +120,14 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 230453,
     color: "#d6154f",
-    files: NONE,
+    tray: "clear",
+    files: {
+      front: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
   {
     rank: 5,
@@ -130,6 +145,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 167303,
     color: "#e58aa2",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -148,6 +164,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 182161,
     color: "#e3a338",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -166,6 +183,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 158040,
     color: "#f0bf1a",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -184,6 +202,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 173987,
     color: "#5d6d80",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -202,6 +221,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 263400,
     color: "#2f7fbf",
+    tray: "clear",
     files: NONE,
   },
   {
@@ -220,6 +240,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     durationMs: 141805,
     color: "#e2703a",
+    tray: "clear",
     files: NONE,
   },
 ];

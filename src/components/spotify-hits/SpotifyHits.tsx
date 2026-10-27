@@ -8,8 +8,8 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { AnimatePresence } from "motion/react";
-import { TRACKS, fileUrl } from "./data/tracks";
+import { AnimatePresence, motion } from "motion/react";
+import { TRACKS, type Track } from "./data/tracks";
 import { wrap, type CaseState, type Live, type Mode } from "./scene/live";
 import { Player } from "./ui/Player";
 import { TrackHeading, TrackMeta } from "./ui/TrackInfo";
@@ -25,6 +25,14 @@ const AUTO_MS = 4500; // the carousel moves on by itself this often…
 const IDLE_MS = 7000; // …once the visitor has left it alone this long
 // the same breakpoint the 3D layout uses (viewport narrower than 0.9 × its height)
 const NARROW = "(max-aspect-ratio: 9/10)";
+
+const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
+/** Screen pixels between neighbouring albums in the carousel, matching the 3D layout. */
+const albumPx = () => {
+  const w = innerWidth;
+  const h = innerHeight;
+  return w / h < 0.9 ? 0.98 * Math.min(h * 0.32, w * 0.58) : 1.17 * Math.min(h * 0.38, w / 5.8);
+};
 
 const reduced = () => typeof window !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -48,11 +56,12 @@ export default function SpotifyHits() {
   const [mode, setModeState] = useState<Mode>("browse");
   const [caseState, setCaseState] = useState<CaseState>("closed");
   const [busy, setBusyState] = useState(false);
+  const [flipped, setFlipped] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const busyRef = useRef(false);
   const lastInput = useRef(0);
-  const swipe = useRef<{ x: number; y: number } | null>(null);
-  const wheel = useRef({ sum: 0, last: 0, stepped: 0 });
+  const drag = useRef<{ id: number; x: number; y: number; from: number; moved: boolean; lx: number; lt: number; v: number } | null>(null);
+  const wheel = useRef({ stepped: 0, snap: 0 as ReturnType<typeof setTimeout> | 0 });
   const front = useRef<gsap.core.Timeline | null>(null);
   const sleeve = useRef<gsap.core.Timeline | null>(null);
 
@@ -61,14 +70,16 @@ export default function SpotifyHits() {
     target: 0,
     mode: "browse",
     caseState: "closed",
-    anim: { fly: 0, rise: 0, hinge: 0, lift: 0 },
+    anim: { fly: 0, rise: 0, hinge: 0, lift: 0, flip: 0 },
     swap: { from: -1, dir: 1, t: 0 },
     hover: { on: false, x: 0, y: 0 },
     disc: { hover: false, drag: false, yaw: 0, pitch: 0, vYaw: 0, spin: 0, z: 0 },
     playing: false,
     pointer: { x: 0, y: 0 },
+    steer: 0,
     open: () => {},
     toggleCase: () => {},
+    turnOver: () => {},
   });
   const track = TRACKS[active];
   const player = usePlayer(track);
@@ -90,14 +101,49 @@ export default function SpotifyHits() {
     setBusyState(b);
   }, []);
 
-  const step = useCallback((d: number, byUser = true) => {
-    const s = live.current;
-    if (s.mode !== "browse") return;
-    if (byUser) lastInput.current = performance.now();
-    s.target += d;
-    s.hover.on = false;
-    setActive(wrap(Math.round(s.target), N));
+  /** The page shows the album nearest the carousel's target (no re-render while that stays the same). */
+  const sync = useCallback(() => {
+    const i = wrap(Math.round(live.current.target), N);
+    setActive((was) => (was === i ? was : i));
   }, []);
+
+  const step = useCallback(
+    (d: number, byUser = true) => {
+      const s = live.current;
+      if (s.mode !== "browse") return;
+      if (byUser) lastInput.current = performance.now();
+      s.target = Math.round(s.target) + d;
+      s.hover.on = false;
+      sync();
+    },
+    [sync],
+  );
+
+  /**
+   * Trackpad scrolling and dragging move the carousel directly, a fraction of an album at a time,
+   * with the carousel following tightly; letting go settles it on the nearest album.
+   */
+  const steerBy = useCallback(
+    (albums: number) => {
+      const s = live.current;
+      if (s.mode !== "browse") return;
+      const now = performance.now();
+      lastInput.current = now;
+      s.steer = now + 220;
+      s.target += albums;
+      s.hover.on = false;
+      sync();
+    },
+    [sync],
+  );
+  const settle = useCallback(
+    (lean = 0) => {
+      const s = live.current;
+      s.target = Math.round(s.target + lean);
+      sync();
+    },
+    [sync],
+  );
 
   // two timelines: bringing the album to the front, and opening its sleeve
   useGSAP(() => {
@@ -130,6 +176,16 @@ export default function SpotifyHits() {
     setCase("closed");
   }, [setCase]);
 
+  /** Turns the shut case over to its back (1) or back to its front (0), as you would to read it. */
+  const turn = useCallback(async (to: 0 | 1) => {
+    const a = live.current.anim;
+    if (a.flip !== to) {
+      if (reduced()) a.flip = to;
+      else await gsap.to(a, { flip: to, duration: 1.2, ease: "power3.inOut" });
+    }
+    setFlipped(to === 1);
+  }, []);
+
   const open = useCallback(async () => {
     if (busyRef.current || live.current.mode !== "browse") return;
     setBusy(true);
@@ -146,21 +202,34 @@ export default function SpotifyHits() {
     setBusy(true);
     playerRef.current.stop();
     if (live.current.caseState !== "closed") await closeCase();
+    await turn(0);
     setMode("closing");
     await run(front.current, false, 1.5);
     setMode("browse");
     lastInput.current = performance.now();
     setBusy(false);
-  }, [setBusy, setMode, closeCase]);
+  }, [setBusy, setMode, closeCase, turn]);
 
-  /** Shut the open cover (the song plays on), or open a shut one. */
+  /** Shut the open cover (the song plays on), or open a shut one (turning it face up first). */
   const toggleCase = useCallback(async () => {
     if (busyRef.current || live.current.mode !== "open") return;
     setBusy(true);
     if (live.current.caseState === "open") await closeCase();
-    else if (live.current.caseState === "closed") await openCase();
+    else if (live.current.caseState === "closed") {
+      await turn(0);
+      await openCase();
+    }
     setBusy(false);
-  }, [setBusy, openCase, closeCase]);
+  }, [setBusy, openCase, closeCase, turn]);
+
+  /** The rotate button: shut the lid if it is open (the song plays on), then turn the case over, or back. */
+  const turnOver = useCallback(async () => {
+    if (busyRef.current || live.current.mode !== "open") return;
+    setBusy(true);
+    if (live.current.caseState === "open") await closeCase();
+    await turn(live.current.anim.flip > 0.5 ? 0 : 1);
+    setBusy(false);
+  }, [setBusy, closeCase, turn]);
 
   /** Next / previous at the front: stop, shut the cover if open, slide the albums, open the new one the same way and play. */
   const skip = useCallback(
@@ -171,6 +240,7 @@ export default function SpotifyHits() {
       playerRef.current.stop();
       const wasOpen = s.caseState === "open";
       if (wasOpen) await closeCase();
+      await turn(0);
       s.swap = { from: wrap(Math.round(s.target), N), dir, t: 0 };
       s.target += dir;
       s.pos = s.target;
@@ -182,11 +252,12 @@ export default function SpotifyHits() {
       playerRef.current.play();
       setBusy(false);
     },
-    [setBusy, openCase, closeCase],
+    [setBusy, openCase, closeCase, turn],
   );
 
   live.current.open = open;
   live.current.toggleCase = toggleCase;
+  live.current.turnOver = turnOver;
   // moves on by itself while nobody is using it
   useEffect(() => {
     const id = setInterval(() => {
@@ -228,6 +299,14 @@ export default function SpotifyHits() {
     return () => mq.removeEventListener("change", on);
   }, []);
 
+  const endDrag = (id: number) => {
+    const d = drag.current;
+    if (!d || d.id !== id) return;
+    drag.current = null;
+    // a flick carries on to the next album
+    if (d.moved) settle(Math.abs(d.v) > 0.45 ? -Math.sign(d.v) * 0.5 : 0);
+  };
+
   const browsing = mode === "browse";
   const atFront = mode === "open" || mode === "opening";
 
@@ -238,28 +317,44 @@ export default function SpotifyHits() {
       style={{ background: C.base }}
       onPointerMove={(e) => {
         live.current.pointer = { x: (e.clientX / innerWidth) * 2 - 1, y: 1 - (e.clientY / innerHeight) * 2 };
-      }}
-      onWheel={(e) => {
-        // one album per wheel gesture: add up the deltas, step once past a threshold, then rest a moment
-        const w = wheel.current;
-        const now = performance.now();
-        if (now - w.last > 250) w.sum = 0;
-        w.last = now;
-        w.sum += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-        if (Math.abs(w.sum) > 40 && now - w.stepped > 450) {
-          step(Math.sign(w.sum));
-          w.sum = 0;
-          w.stepped = now;
+        const d = drag.current;
+        if (!d || e.pointerId !== d.id) return;
+        const dx = e.clientX - d.x;
+        if (!d.moved) {
+          // a drag starts once it is clearly sideways; until then it may still be a click
+          if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - d.y)) return;
+          d.moved = true;
         }
+        const now = performance.now();
+        d.v = d.v * 0.7 + ((e.clientX - d.lx) / Math.max(1, now - d.lt)) * 0.3;
+        d.lx = e.clientX;
+        d.lt = now;
+        steerBy(d.from - dx / albumPx() - live.current.target);
       }}
-      onPointerDown={(e) => (swipe.current = { x: e.clientX, y: e.clientY })}
-      onPointerUp={(e) => {
-        const s = swipe.current;
-        swipe.current = null;
-        if (!s || live.current.mode !== "browse") return;
-        const dx = e.clientX - s.x;
-        const dy = e.clientY - s.y;
-        if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) step(dx < 0 ? 1 : -1);
+      onPointerDown={(e) => {
+        if (live.current.mode !== "browse" || e.button !== 0) return;
+        const now = performance.now();
+        drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: live.current.target, moved: false, lx: e.clientX, lt: now, v: 0 };
+      }}
+      onPointerUp={(e) => endDrag(e.pointerId)}
+      onPointerCancel={(e) => endDrag(e.pointerId)}
+      onPointerLeave={(e) => endDrag(e.pointerId)}
+      onWheel={(e) => {
+        if (live.current.mode !== "browse") return;
+        const w = wheel.current;
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        // a mouse wheel clicks in whole notches: one album each. A trackpad sends a stream of small
+        // deltas (with momentum): those move the carousel directly and it settles when they stop.
+        const notch = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+        if (notch) {
+          const now = performance.now();
+          if (now - w.stepped > 120) step(Math.sign(delta));
+          w.stepped = now;
+          return;
+        }
+        steerBy(clamp(delta / (albumPx() * 1.4), -0.35, 0.35));
+        if (w.snap) clearTimeout(w.snap);
+        w.snap = setTimeout(() => settle(), 140);
       }}
     >
       {/* the album's colour, soft behind the albums; stronger once one is at the front */}
@@ -273,18 +368,11 @@ export default function SpotifyHits() {
           WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
         }}
       />
-      {/* with a real front cover, the page takes on the cover itself, blurred */}
-      {track.files.front && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-[-10%] bg-cover bg-center blur-[70px] saturate-150 transition-opacity duration-1000"
-          style={{ backgroundImage: `url(${fileUrl(track, "front.webp")})`, opacity: atFront ? 0.6 : 0 }}
-        />
-      )}
+      <Backdrop track={track} show={atFront} />
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.6),transparent_30%,transparent_65%,rgba(18,18,18,0.85))]" />
 
       <div className="absolute inset-0">
-        <Scene live={live} tracks={TRACKS} active={active} />
+        <Scene live={live} tracks={TRACKS} active={active} open={mode !== "browse"} />
       </div>
 
       {/* overlay */}
@@ -341,17 +429,82 @@ export default function SpotifyHits() {
         )}
         {mode === "open" && !busy && (
           <p className={cx(MONO, "absolute inset-x-0 top-[clamp(64px,10vh,96px)] hidden text-center text-[11px] text-white/45 sm:block")}>
-            {caseState === "open" ? "Drag the disc · click the cover to shut it" : "Click the cover to open it"}
+            {flipped ? "The back of the case · click it to turn it back" : caseState === "open" ? "Drag the disc · click the lid to shut it" : "Click the case to open it"}
           </p>
         )}
 
         <AnimatePresence>
+          {mode === "open" && (
+            <TurnButton key="turn" flipped={flipped} disabled={busy} onClick={turnOver} />
+          )}
           {mode === "open" && (
             <Player key="player" track={track} playing={player.playing} elapsed={player.elapsed} duration={player.duration} busy={busy} onToggle={player.toggle} onSkip={skip} />
           )}
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+/**
+ * Behind the chosen album, the page takes on its front cover, softly blurred: it fades and settles in
+ * as the album comes forward, and crossfades when next / previous changes the album.
+ */
+function Backdrop({ track, show }: { track: Track; show: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!show) return;
+    let alive = true;
+    // the textures module brings three.js with it, so it loads with the scene, not the page
+    import("./scene/textures").then((m) => m.frontBackdrop(track)).then((u) => alive && setUrl(u));
+    return () => {
+      alive = false;
+    };
+  }, [track, show]);
+  return (
+    <AnimatePresence>
+      {show && url && (
+        <motion.div
+          key={url}
+          aria-hidden
+          initial={{ opacity: 0, scale: 1.22 }}
+          animate={{ opacity: 0.85, scale: 1.1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
+          className="pointer-events-none absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${url})`, filter: "blur(22px) saturate(1.15) brightness(0.8)" }}
+        />
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Sits just above the player: turns the case over to show its back, and back again. */
+function TurnButton({ flipped, disabled, onClick }: { flipped: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={flipped ? "Turn the case to the front" : "Turn the case over"}
+      title={flipped ? "Show the front" : "Show the back"}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 16 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
+      className={cx(
+        "pointer-events-auto absolute inset-x-0 bottom-[calc(clamp(14px,3.5vh,36px)+124px)] mx-auto grid size-11 cursor-pointer place-items-center rounded-full border border-white/10 bg-black/45 text-white/85 backdrop-blur transition-colors hover:bg-black/65 hover:text-white disabled:cursor-default disabled:opacity-40",
+        FOCUS,
+      )}
+    >
+      <svg viewBox="0 0 24 24" className={cx("size-5 transition-transform duration-500", flipped && "-scale-x-100")} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {/* an arrow round a vertical axis: a turn about the upright */}
+        <ellipse cx="12" cy="12" rx="9" ry="3.6" opacity="0.35" />
+        <path d="M3.6 13.6C4.9 15.4 8.2 16.6 12 16.6c4.7 0 8.6-2 9-4.6" />
+        <path d="m18.6 14.9 2.6-2.9 1.1 3.6" />
+        <path d="M12 3v18" opacity="0.5" />
+      </svg>
+    </motion.button>
   );
 }
 
