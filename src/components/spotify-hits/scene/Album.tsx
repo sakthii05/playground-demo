@@ -4,13 +4,13 @@
 // with its spines folded up the sides. Only the album in the centre answers the pointer.
 // At the front, the lid swings open on its hinge (and on tall screens the open case turns upright),
 // and the closed case can be turned over to show its back.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { easing } from "maath";
 import { Disc } from "./Disc";
 import { HINGE, caseGeometry } from "./geo";
-import { BLANK, buildFront, detailArt, disposeArt, paperGrain, plasticWear, softShadow, type DetailArt, type FrontArt } from "./textures";
+import { BLANK, buildFront, detailArt, disposeArt, paperGrain, plasticWear, softShadow, queueUpload, upload, type DetailArt, type FrontArt } from "./textures";
 import { CASE, DISC_REST, HOLD, LIFT, R, S, Z, clamp01, discBusy, easeInOut, lerpTable, offsetOf, smooth, wrap, type LiveRef } from "./live";
 import type { Track } from "../data/tracks";
 
@@ -20,15 +20,19 @@ const NO_RAY = () => null;
 const HIT = new THREE.MeshBasicMaterial({ visible: false });
 /** How long an album must stay in the centre before its detail art is made (none while scrolling past). */
 const SETTLE_MS = 450;
-const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 /** Open, the lid lies flat beside the base; this slides the pair so it stays centred. */
 const SHIFT = (CASE.panel + CASE.hinge) / 2;
 /** The open case's length (lid, hinge strip, base) and the closed case's width, in case heights. */
 const SPAN = (2 * CASE.panel + CASE.hinge) / S;
 const WIDE = CASE.w / S;
 
-/** Where things go for a viewport of vw × vh world units (at the albums' depth). */
+/** Where things go for a viewport of vw × vh world units (at the albums' depth). Worked out once per size. */
+let laid: { vw: number; vh: number; L: ReturnType<typeof computeLayout> } | null = null;
 export function layout(vw: number, vh: number) {
+  if (!laid || laid.vw !== vw || laid.vh !== vh) laid = { vw, vh, L: computeLayout(vw, vh) };
+  return laid.L;
+}
+function computeLayout(vw: number, vh: number) {
   const narrow = vw / vh < 0.9;
   // height of the centre case in world units, and the row either side, in centre-case heights
   const w = narrow ? Math.min(vh * 0.32, vw * 0.58) : Math.min(vh * 0.38, vw / 5.8);
@@ -42,46 +46,53 @@ export function layout(vw: number, vh: number) {
 }
 
 /**
- * The front cover, for every album. The rest of the art only once this album has been the chosen one
- * for a moment: made in small pieces in idle time, then sent to the GPU one texture a frame, so
- * scrolling past never waits on it.
+ * The front cover, for every album. The rest of the art for the chosen album: usually already made
+ * and on the GPU (the warm-up and the neighbour prefetch see to that), otherwise made in small
+ * pieces in idle time. While browsing it waits until the album has stayed in the centre a moment,
+ * so scrolling past costs nothing; at the front it is wanted at once.
  */
-function useArt(track: Track, chosen: boolean) {
+function useArt(track: Track, chosen: boolean, now: boolean, live: LiveRef) {
   const gl = useThree((s) => s.gl);
+  const upright = useThree((s) => s.size.width / s.size.height < 0.9);
   const [front, setFront] = useState<FrontArt | null>(null);
   const [detail, setDetail] = useState<DetailArt | null>(null);
   useEffect(() => {
     let alive = true;
     let made: FrontArt | null = null;
-    buildFront(track).then((a) => {
-      if (alive) setFront((made = a));
-      else disposeArt(a);
+    buildFront(track).then(async (a) => {
+      if (!alive) return disposeArt(a);
+      made = a;
+      // on the GPU first (through the shared queue), so showing it costs nothing
+      await queueUpload(gl, a.front);
+      if (!alive) return;
+      setFront(a);
+      live.current.fronts.add(track.slug);
     });
     return () => {
       alive = false;
       disposeArt(made);
     };
-  }, [track]);
-  const source = front?.source;
+  }, [track, live, gl]);
   useEffect(() => {
-    if (!chosen || !source) return;
+    if (!chosen) return;
     let alive = true;
     const timer = setTimeout(async () => {
-      const art = await detailArt(track, source);
-      for (const t of Object.values(art)) {
-        if (!alive) return;
-        gl.initTexture(t);
-        await nextFrame();
-      }
-      if (alive) setDetail(art);
-    }, SETTLE_MS);
+      const art = await detailArt(track, upright);
+      if (!(await upload(gl, art, () => alive))) return;
+      setDetail(art);
+      live.current.detailReady = track.slug;
+    }, now ? 0 : SETTLE_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
-      // (the art stays cached for a quick return; the cache frees it later)
-      setDetail(null);
     };
-  }, [track, chosen, source, gl]);
+  }, [track, chosen, now, upright, gl, live]);
+  // no longer chosen: let go of the art (it stays cached for a quick return; the cache frees it later)
+  useEffect(() => {
+    if (chosen) return;
+    setDetail(null);
+    if (live.current.detailReady === track.slug) live.current.detailReady = null;
+  }, [chosen, track, live]);
   return { front, detail };
 }
 
@@ -167,7 +178,18 @@ function usePaper(track: Track, front: FrontArt | null, detail: DetailArt | null
   return mats;
 }
 
-export function Album({ track, index, count, selected, open, live }: { track: Track; index: number; count: number; selected: boolean; open: boolean; live: LiveRef }) {
+interface AlbumProps {
+  track: Track;
+  index: number;
+  count: number;
+  selected: boolean;
+  open: boolean;
+  warm: boolean;
+  live: LiveRef;
+}
+
+// memoised: when the centre album changes, only the two whose `selected` flips re-render
+export const Album = memo(function Album({ track, index, count, selected, open, warm, live }: AlbumProps) {
   const place = useRef<THREE.Group>(null);
   const tilt = useRef<THREE.Group>(null);
   const upright = useRef<THREE.Group>(null);
@@ -179,7 +201,9 @@ export function Album({ track, index, count, selected, open, live }: { track: Tr
   const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({ map: softShadow(), transparent: true, depthWrite: false, opacity: 0 }), []);
   useEffect(() => () => shadowMat.dispose(), [shadowMat]);
 
-  const { front, detail } = useArt(track, selected);
+  const { front, detail } = useArt(track, selected, open, live);
+  // while the intro warms up, the chosen album also carries its disc and shadow, so their shaders compile then
+  const withDisc = selected && (open || warm);
   const paper = usePaper(track, front, detail);
   const geo = caseGeometry();
   const p = shared();
@@ -256,7 +280,8 @@ export function Album({ track, index, count, selected, open, live }: { track: Tr
       z -= f * L.w;
     }
 
-    g.visible = scale > 0.001;
+    // during the warm-up every album is "visible", so its shaders compile and textures upload before you see it
+    g.visible = warm || scale > 0.001;
     g.position.set(x, y, z);
     g.rotation.set(rotX, rotY, 0);
     g.scale.setScalar((scale * L.w) / S);
@@ -271,13 +296,6 @@ export function Album({ track, index, count, selected, open, live }: { track: Tr
     lid.current.rotation.y = -Math.PI * open;
     spread.current.position.x = (CASE.hinge / 2) * (1 - open) + SHIFT * open;
     upright.current.rotation.z = L.narrow ? (-Math.PI / 2) * open : 0;
-    if (detail) {
-      // turned upright, the booklet page and the tray side use their turned layouts so they still read
-      const inside = L.narrow ? detail.insideUpright : detail.inside;
-      const tray = L.narrow ? detail.trayUpright : detail.tray;
-      if (paper.inside.map !== inside) paper.inside.map = inside;
-      if (paper.tray.map !== tray) paper.tray.map = tray;
-    }
 
     // While the disc is being turned the case backs away, far enough for a full flip, and stays
     // there until the disc has settled for a moment; then it comes back in once.
@@ -359,7 +377,7 @@ export function Album({ track, index, count, selected, open, live }: { track: Tr
               <mesh geometry={geo.trayPlate} material={trayMat} raycast={NO_RAY} />
               <mesh geometry={geo.baseFrame} material={p.edge} raycast={NO_RAY} />
               <mesh geometry={geo.hitBase} material={HIT} />
-              {selected && open && <mesh ref={shadow} material={shadowMat} geometry={UNIT_PLANE} raycast={NO_RAY} />}
+              {withDisc && <mesh ref={shadow} material={shadowMat} geometry={UNIT_PLANE} raycast={NO_RAY} />}
               {/* lid: turns about the hinge axis, with the booklet clipped under it */}
               <group position={[HINGE.x, 0, HINGE.z]}>
                 <group ref={lid}>
@@ -373,11 +391,10 @@ export function Album({ track, index, count, selected, open, live }: { track: Tr
               </group>
             </group>
             {/* only the chosen album's disc is ever seen, and only once it is at the front */}
-            {selected && open && <Disc color={track.color} label={detail?.label ?? null} live={live} active />}
+            {withDisc && <Disc color={track.color} label={detail?.label ?? null} live={live} active />}
           </group>
         </group>
       </group>
     </group>
   );
-}
-
+});

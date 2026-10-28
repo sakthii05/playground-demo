@@ -11,8 +11,11 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { R } from "./live";
 
-/** Spotify's green, a step deeper than the UI green so the stroke reads as ink, not light. */
-const INK = "#1db954";
+/**
+ * The ink: Spotify's green, a step deeper than the UI green so the stroke reads as ink, not light.
+ * Shared and kept, so its shader is compiled once (in the intro's warm-up), not on first hover.
+ */
+export const INK = new THREE.MeshBasicMaterial({ color: "#1db954", side: THREE.DoubleSide, toneMapped: false });
 const N = 220; // points along a loop
 const TICK = 1 / 14; // seconds between redraws
 const WIDTH = R * 0.016; // widest part of the stroke
@@ -108,15 +111,9 @@ const WIPE = 1 / 0.4;
 export function Scribble({ on }: { on: () => boolean }) {
   const meshes = useRef<(THREE.Mesh | null)[]>([]);
   const geos = useMemo(() => LOOPS.map(ribbon), []);
-  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: INK, side: THREE.DoubleSide, toneMapped: false }), []);
+  const material = INK;
   const state = useRef({ hands: LOOPS.map((l) => newHand(l.radius, l.start)), clock: 0, head: 0, tail: 0 });
-  useEffect(
-    () => () => {
-      geos.forEach((g) => g.dispose());
-      material.dispose();
-    },
-    [geos, material],
-  );
+  useEffect(() => () => geos.forEach((g) => g.dispose()), [geos]);
 
   useFrame((_, raw) => {
     const dt = Math.min(raw, 0.05);

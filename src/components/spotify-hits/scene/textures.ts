@@ -230,15 +230,65 @@ function fit(g: CanvasRenderingContext2D, text: string, family: string, weight: 
   return px;
 }
 
-function grainOver(g: CanvasRenderingContext2D, w: number, h: number, alpha: number) {
-  const img = g.getImageData(0, 0, w, h);
+// Paper and grain come from small tiles made once and laid over the page as patterns (each at its own
+// offset, so no two pages line up): a few milliseconds a page, instead of tens for drawing every
+// fibre and touching every pixel, so the work fits between frames.
+let tiles: { noise: HTMLCanvasElement; fibres: HTMLCanvasElement; clouds: HTMLCanvasElement } | null = null;
+function paperTiles() {
+  if (tiles) return tiles;
+  const [noise, gn] = canvas(256);
+  const img = gn.createImageData(256, 256);
   for (let i = 0; i < img.data.length; i += 4) {
-    const v = (Math.random() - 0.5) * 255 * alpha;
-    img.data[i] += v;
-    img.data[i + 1] += v;
-    img.data[i + 2] += v;
+    const v = 128 + (Math.random() - 0.5) * 128;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
   }
-  g.putImageData(img, 0, 0);
+  gn.putImageData(img, 0, 0);
+  const [fibres, gf] = canvas(512);
+  gf.lineWidth = 0.8;
+  for (let i = 0; i < 360; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const a = Math.random() * Math.PI * 2;
+    const l = 3 + Math.random() * 10;
+    gf.strokeStyle = Math.random() < 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+    gf.beginPath();
+    gf.moveTo(x, y);
+    gf.quadraticCurveTo(x + Math.cos(a + 0.6) * l * 0.6, y + Math.sin(a + 0.6) * l * 0.6, x + Math.cos(a) * l, y + Math.sin(a) * l);
+    gf.stroke();
+  }
+  const [clouds, gc] = canvas(512);
+  for (let i = 0; i < 18; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 30 + Math.random() * 90;
+    // drawn wrapped, so the tile repeats without a seam
+    for (const [ox, oy] of [[0, 0], [-512, 0], [512, 0], [0, -512], [0, 512]]) {
+      const c = gc.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      c.addColorStop(0, i % 2 ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.045)");
+      c.addColorStop(1, "rgba(0,0,0,0)");
+      gc.fillStyle = c;
+      gc.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    }
+  }
+  return (tiles = { noise, fibres, clouds });
+}
+
+function lay(g: CanvasRenderingContext2D, tile: HTMLCanvasElement, w: number, h: number, scale = 1) {
+  const p = g.createPattern(tile, "repeat")!;
+  p.setTransform(new DOMMatrix().translateSelf(Math.random() * tile.width, Math.random() * tile.height).scaleSelf(scale));
+  g.fillStyle = p;
+  g.fillRect(0, 0, w, h);
+}
+
+/** Fine grain over the whole page, ink and all, as print on real stock has. */
+function grainOver(g: CanvasRenderingContext2D, w: number, h: number, alpha: number) {
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = "overlay";
+  g.globalAlpha = Math.min(1, alpha * 4);
+  lay(g, paperTiles().noise, w, h);
+  g.restore();
 }
 
 /**
@@ -247,30 +297,11 @@ function grainOver(g: CanvasRenderingContext2D, w: number, h: number, alpha: num
  * grain runs through the type as it does through ink on real paper.
  */
 function paper(g: CanvasRenderingContext2D, w: number, h: number, color: string) {
+  const t = paperTiles();
   g.fillStyle = color;
   g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 70; i++) {
-    const x = Math.random() * w;
-    const y = Math.random() * h;
-    const r = (0.05 + Math.random() * 0.16) * w;
-    const cloud = g.createRadialGradient(x, y, 0, x, y, r);
-    cloud.addColorStop(0, Math.random() < 0.5 ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.04)");
-    cloud.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = cloud;
-    g.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-  g.lineWidth = 0.8;
-  for (let i = 0; i < 1400; i++) {
-    const x = Math.random() * w;
-    const y = Math.random() * h;
-    const a = Math.random() * Math.PI * 2;
-    const l = 3 + Math.random() * 10;
-    g.strokeStyle = Math.random() < 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
-    g.beginPath();
-    g.moveTo(x, y);
-    g.quadraticCurveTo(x + Math.cos(a + 0.6) * l * 0.6, y + Math.sin(a + 0.6) * l * 0.6, x + Math.cos(a) * l, y + Math.sin(a) * l);
-    g.stroke();
-  }
+  lay(g, t.clouds, w, h, 1.6);
+  lay(g, t.fibres, w, h);
 }
 
 /**
@@ -583,7 +614,13 @@ const fronts = new Map<string, Promise<HTMLImageElement | HTMLCanvasElement>>();
 function frontSource(t: Track) {
   let p = fronts.get(t.slug);
   if (!p) {
-    p = fontsReady().then(async () => (await get(t, "front.webp", t.files.front)) ?? drawFront(t));
+    // drawn covers are made one per quiet moment, so the intro's ball never waits on them
+    p = fontsReady().then(async () => {
+      const img = await get(t, "front.webp", t.files.front);
+      if (img) return img;
+      await idle();
+      return drawFront(t);
+    });
     fronts.set(t.slug, p);
   }
   return p;
@@ -626,31 +663,29 @@ export async function buildFront(t: Track): Promise<FrontArt> {
 }
 
 /**
- * What only the open album needs, made when it is chosen and freed when it is not: the booklet's
- * inside page and the tray side of the insert (both always drawn, in two layouts: as they lie, and
- * turned for the upright open case on tall screens), the back insert (the image, or drawn) with its
- * back panel cut from it, and the disc label.
+ * What only the open album needs: the booklet's inside page and the tray side of the insert (always
+ * drawn, laid out for the screen's orientation: as they lie, or turned for the upright open case on
+ * tall screens), the back insert (the image, or drawn) with its back panel cut from it, and the disc
+ * label. Made ahead of time (see `detailArt`), never while it is needed.
  */
 export interface DetailArt {
   inside: THREE.Texture;
-  insideUpright: THREE.Texture;
   tray: THREE.Texture;
-  trayUpright: THREE.Texture;
   /** The whole insert, spine | back | spine, for the spines. */
   insert: THREE.Texture;
   /** Just the back panel of it, for the back face. */
   back: THREE.Texture;
   label: THREE.Texture;
 }
-/** Waits for a quiet moment, so each heavy drawing step runs between frames instead of inside one. */
+
+/** Waits for a quiet moment between frames; each piece of drawing below fits in one. */
 const idle = () =>
   new Promise<void>((done) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => done(), { timeout: 250 }) : setTimeout(done, 16)));
 
-async function buildDetail(t: Track, front: FrontArt["source"]): Promise<DetailArt> {
-  await fontsReady();
+async function buildDetail(t: Track, upright: boolean): Promise<DetailArt> {
+  const [front] = await Promise.all([frontSource(t), fontsReady()]);
   const [bi, di] = await Promise.all([get(t, "back.webp", t.files.back), get(t, "disc.webp", t.files.disc)]);
   const total = PAPER.inlayW + 2 * PAPER.spine;
-  // one piece per quiet moment: each is a few tens of milliseconds of canvas work
   await idle();
   const insert = texture(bi ?? drawBack(t, PAPER.spine / total));
   const back = insert.clone();
@@ -658,36 +693,64 @@ async function buildDetail(t: Track, front: FrontArt["source"]): Promise<DetailA
   back.offset.x = PAPER.spine / total;
   back.needsUpdate = true;
   await idle();
-  const inside = texture(drawInside(t, false));
+  const inside = texture(drawInside(t, upright));
   await idle();
-  const insideUpright = texture(drawInside(t, true));
-  await idle();
-  const tray = texture(drawTray(t, false));
-  await idle();
-  const trayUpright = texture(drawTray(t, true));
+  const tray = texture(drawTray(t, upright));
   await idle();
   const label = texture(di ?? drawLabel(t, front));
-  return { inside, insideUpright, tray, trayUpright, insert, back, label };
+  return { inside, tray, insert, back, label };
 }
 
-/** The last few albums' detail art, kept so going back to one is instant; the oldest is freed. */
+/**
+ * Detail art by album and orientation, made once and cached. The page asks for the chosen album's
+ * and, ahead of time, its neighbours', so next and previous never wait; the least recently used
+ * beyond `KEEP` are freed.
+ */
 const details = new Map<string, Promise<DetailArt>>();
-const KEEP = 3;
-export function detailArt(t: Track, front: FrontArt["source"]) {
-  const hit = details.get(t.slug);
+const KEEP = 6;
+export function detailArt(t: Track, upright: boolean) {
+  const key = `${t.slug}|${upright ? "up" : "flat"}`;
+  const hit = details.get(key);
   if (hit) {
-    details.delete(t.slug);
-    details.set(t.slug, hit);
+    details.delete(key);
+    details.set(key, hit);
     return hit;
   }
-  const made = buildDetail(t, front);
-  details.set(t.slug, made);
+  const made = buildDetail(t, upright);
+  details.set(key, made);
   while (details.size > KEEP) {
-    const [slug, old] = details.entries().next().value!;
-    details.delete(slug);
+    const [oldest, old] = details.entries().next().value!;
+    details.delete(oldest);
     old.then(disposeArt);
   }
   return made;
+}
+
+/** True once the GPU has the texture (so waiting a frame for it would be wasted). */
+export const uploaded = (gl: THREE.WebGLRenderer, t: THREE.Texture) => !!(gl.properties.get(t) as { __webglInit?: boolean }).__webglInit;
+
+/**
+ * One queue for every texture the page sends to the GPU: at most one a frame, however many albums
+ * have art ready at the same moment, so uploads never pile into a single slow frame.
+ */
+let uploads: Promise<void> = Promise.resolve();
+export function queueUpload(gl: THREE.WebGLRenderer, tex: THREE.Texture) {
+  const done = uploads.then(async () => {
+    if (uploaded(gl, tex)) return;
+    gl.initTexture(tex);
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  });
+  uploads = done.catch(() => {});
+  return done;
+}
+
+/** Sends an album's detail art to the GPU through the queue, skipping what is already there. */
+export async function upload(gl: THREE.WebGLRenderer, art: DetailArt, alive: () => boolean = () => true) {
+  for (const tex of Object.values(art)) {
+    if (!alive()) return false;
+    await queueUpload(gl, tex);
+  }
+  return alive();
 }
 
 export const disposeArt = (a: FrontArt | DetailArt | null) =>

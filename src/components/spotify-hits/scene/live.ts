@@ -83,6 +83,13 @@ export interface Live {
   pointer: { x: number; y: number };
   /** Until this time (ms) the carousel is being steered directly (drag, trackpad) and follows tightly. */
   steer: number;
+  /** For the intro's warm-up: albums whose front cover is on, and the album whose detail art is on. */
+  fronts: Set<string>;
+  detailReady: string | null;
+  /** The intro: loading progress 0 … 1 for its ring (1 only once everything is loaded and warmed up). */
+  intro: { target: number };
+  /** Where the logo sits in the top bar, in CSS px (its centre and size), for the ball to fly to. */
+  logoSlot: { x: number; y: number; size: number } | null;
   open: () => void;
   toggleCase: () => void;
   turnOver: () => void;

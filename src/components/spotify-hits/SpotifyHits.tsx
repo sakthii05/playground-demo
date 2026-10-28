@@ -11,6 +11,7 @@ import { useGSAP } from "@gsap/react";
 import { AnimatePresence, motion } from "motion/react";
 import { TRACKS, type Track } from "./data/tracks";
 import { wrap, type CaseState, type Live, type Mode } from "./scene/live";
+import type { IntroPhase } from "./scene/Intro";
 import { Player } from "./ui/Player";
 import { TrackHeading, TrackMeta } from "./ui/TrackInfo";
 import { usePlayer } from "./ui/usePlayer";
@@ -58,8 +59,26 @@ export default function SpotifyHits() {
   const [busy, setBusyState] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [narrow, setNarrow] = useState(false);
+  // the intro (drawn in the scene): `warm` while the 3D warms up behind it; `phase` as it plays out
+  const [warm, setWarm] = useState(true);
+  const [phase, setPhase] = useState<IntroPhase>("loading");
+  // a plain black cover from the very first paint until the 3D black screen has drawn (the canvas
+  // loads a moment after the page), so nothing of the page shows before the intro
+  const [covered, setCovered] = useState(true);
+  const onReady = useCallback(() => setWarm(false), []);
+  const onPhase = useCallback((p: IntroPhase) => {
+    if (p === "drawn") return setCovered(false);
+    setPhase(p);
+    if (p === "done") {
+      // the page is yours once the black screen has gone (the ball is still on its way up)
+      introDone.current = true;
+      lastInput.current = performance.now();
+    }
+  }, []);
+  const logoSlot = useRef<HTMLSpanElement>(null);
   const busyRef = useRef(false);
   const lastInput = useRef(0);
+  const introDone = useRef(false);
   const drag = useRef<{ id: number; x: number; y: number; from: number; moved: boolean; lx: number; lt: number; v: number } | null>(null);
   const wheel = useRef({ stepped: 0, snap: 0 as ReturnType<typeof setTimeout> | 0 });
   const front = useRef<gsap.core.Timeline | null>(null);
@@ -77,6 +96,10 @@ export default function SpotifyHits() {
     playing: false,
     pointer: { x: 0, y: 0 },
     steer: 0,
+    fronts: new Set(),
+    detailReady: null,
+    intro: { target: 0 },
+    logoSlot: null,
     open: () => {},
     toggleCase: () => {},
     turnOver: () => {},
@@ -110,7 +133,7 @@ export default function SpotifyHits() {
   const step = useCallback(
     (d: number, byUser = true) => {
       const s = live.current;
-      if (s.mode !== "browse") return;
+      if (s.mode !== "browse" || !introDone.current) return;
       if (byUser) lastInput.current = performance.now();
       s.target = Math.round(s.target) + d;
       s.hover.on = false;
@@ -126,7 +149,7 @@ export default function SpotifyHits() {
   const steerBy = useCallback(
     (albums: number) => {
       const s = live.current;
-      if (s.mode !== "browse") return;
+      if (s.mode !== "browse" || !introDone.current) return;
       const now = performance.now();
       lastInput.current = now;
       s.steer = now + 220;
@@ -163,11 +186,25 @@ export default function SpotifyHits() {
     document.body.style.cursor = "";
   };
 
+  /**
+   * Waits (a frame at a time, at most `limit` ms) until the chosen album's art is on, so a lid never
+   * opens on art still being made. Thanks to the warm-up and the prefetch it is nearly always on already.
+   */
+  const artReady = useCallback((limit = 2500) => {
+    const slug = TRACKS[wrap(Math.round(live.current.target), N)].slug;
+    const t0 = performance.now();
+    return new Promise<void>((done) => {
+      const check = () => (live.current.detailReady === slug || performance.now() - t0 > limit ? done() : requestAnimationFrame(check));
+      check();
+    });
+  }, []);
+
   const openCase = useCallback(async () => {
+    await artReady();
     setCase("opening");
     await run(sleeve.current, true);
     setCase("open");
-  }, [setCase]);
+  }, [setCase, artReady]);
 
   const closeCase = useCallback(async () => {
     resetDisc();
@@ -187,7 +224,7 @@ export default function SpotifyHits() {
   }, []);
 
   const open = useCallback(async () => {
-    if (busyRef.current || live.current.mode !== "browse") return;
+    if (busyRef.current || live.current.mode !== "browse" || !introDone.current) return;
     setBusy(true);
     setMode("opening");
     await run(front.current, true);
@@ -262,7 +299,7 @@ export default function SpotifyHits() {
   useEffect(() => {
     const id = setInterval(() => {
       const s = live.current;
-      if (s.mode !== "browse" || s.hover.on || document.hidden || reduced()) return;
+      if (s.mode !== "browse" || s.hover.on || drag.current || document.hidden || reduced() || !introDone.current) return;
       if (performance.now() - lastInput.current < IDLE_MS) return;
       step(1, false);
     }, AUTO_MS);
@@ -290,6 +327,24 @@ export default function SpotifyHits() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [step, open, back, skip]);
+
+  // where the logo slot is, for the ball to fly to (kept current on resize)
+  useEffect(() => {
+    const measure = () => {
+      const el = logoSlot.current;
+      if (!el) return;
+      const b = el.getBoundingClientRect();
+      live.current.logoSlot = { x: b.left + b.width / 2, y: b.top + b.height / 2, size: b.width };
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (logoSlot.current) ro.observe(logoSlot.current);
+    addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      removeEventListener("resize", measure);
+    };
+  }, []);
 
   useEffect(() => {
     const mq = matchMedia(NARROW);
@@ -372,22 +427,22 @@ export default function SpotifyHits() {
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.6),transparent_30%,transparent_65%,rgba(18,18,18,0.85))]" />
 
       <div className="absolute inset-0">
-        <Scene live={live} tracks={TRACKS} active={active} open={mode !== "browse"} />
+        <Scene live={live} tracks={TRACKS} active={active} open={mode !== "browse"} warm={warm} onReady={onReady} onPhase={onPhase} />
       </div>
 
-      {/* overlay */}
-      <div className="pointer-events-none absolute inset-0">
+      {covered && <div aria-hidden className="absolute inset-0 z-30" style={{ background: C.base }} />}
+
+      {/* overlay: hidden while the intro's black screen is up, fading in as it crumbles away */}
+      <div className={cx("pointer-events-none absolute inset-0 transition-opacity duration-[1400ms] ease-out", phase === "loading" ? "opacity-0" : "opacity-100")}>
         <header className={cx(GUTTER, "flex items-center justify-between pt-[clamp(14px,2.6vh,28px)]")}>
           <div className="flex items-center gap-2.5">
-            <span className="grid size-8 place-items-center rounded-full" style={{ background: C.green }} aria-hidden>
-              <svg viewBox="0 0 16 16" className="size-4 text-black" fill="currentColor">
-                <rect x="2.5" y="6" width="2.2" height="6" rx="1.1" />
-                <rect x="6.9" y="3.5" width="2.2" height="9" rx="1.1" />
-                <rect x="11.3" y="7.5" width="2.2" height="4.5" rx="1.1" />
-              </svg>
-            </span>
+            {/* left empty: the intro's disco ball flies here and stays, turning */}
+            <span ref={logoSlot} className="block size-9" aria-hidden />
             <div className="leading-tight">
-              <p className="text-[15px] font-bold tracking-[-0.01em]">Top Hits</p>
+              <p className="flex items-center gap-2 text-[15px] font-bold tracking-[-0.01em]">
+                Top Hits
+                <span className={cx(MONO, "rounded-full border border-white/20 px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-white/70")}>Fan concept</span>
+              </p>
               <p className="text-[11px]" style={{ color: C.subdued }}>
                 Most streamed of all time
               </p>
