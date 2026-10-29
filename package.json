@@ -6,7 +6,10 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check:hits": "node scripts/check-hits.mjs",
+    "optimize:hits": "node scripts/optimize-hits.mjs",
+    "prebuild": "npm run check:hits"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -23,7 +26,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-icons": "^5.7.0",
-  "three": "^0.185.1"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -7,6 +7,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { easing } from "maath";
+import { Notes } from "./Notes";
 import { Scribble } from "./Scribble";
 import { BLANK, dataSide, printScreen } from "./textures";
 import { DISC, DISC_REST, H, LIFT, POP, R, type LiveRef } from "./live";
@@ -91,9 +92,9 @@ export function Disc({ color, label, live, active }: { color: string; label: THR
         d.vYaw = 0;
         // open, either face will do; going back in the tray, it turns label-up
         const face = on ? Math.PI : Math.PI * 2;
-        easing.damp(d, "yaw", Math.round(d.yaw / face) * face, on ? 0.3 : 0.15, dt);
+        easing.damp(d, "yaw", Math.round(d.yaw / face) * face, on ? 0.3 : 0.12, dt);
       }
-      easing.damp(d, "pitch", 0, 0.3, dt);
+      easing.damp(d, "pitch", 0, on ? 0.3 : 0.12, dt);
     }
     turn.current.rotation.set(d.pitch, d.yaw, 0);
     // turns slowly while the song plays; eases to a stop while the pointer is on it
@@ -138,6 +139,8 @@ export function Disc({ color, label, live, active }: { color: string; label: THR
   return (
     <group ref={lift}>
       {active && <Scribble on={() => isOn() && (live.current.disc.hover || live.current.disc.drag)} />}
+      {/* notes rise out from behind the disc while the song plays (with the lid open) */}
+      {active && <Notes on={() => isOn() && live.current.playing} />}
       <group
         ref={turn}
         onPointerDown={down}

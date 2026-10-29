@@ -1,15 +1,17 @@
 // The songs on the page, in chart order. Spotify's all-time most-streamed songs, from the list it
 // published for its 20th anniversary (April 2026).
 //
-// Adding a song: add an entry here and a folder public/spotify-hits/<slug>/ with any of
-//   front.webp   booklet front cover, 1200 × 1200 (also the blurred page background when open,
-//                and the disc label when there is no disc.webp)
-//   back.webp    the back insert as printed flat, 1500 × 1180: a 60 px spine at each side and the
-//                1380 px back panel between them
-//   disc.webp    the disc label, 1200 × 1200, round art filling the square
-//   audio.mp3    the song, 128–192 kbps
-//   lyrics.lrc   time-synced lyrics ([mm:ss.xx] line)
-// then switch on the matching flag in `files`. Anything missing is drawn from the data in `color`.
+// Adding a song: add an entry here and put its files in public/spotify-hits/<slug>/:
+//   front, back, disc   the art, any size and format (.jpg .png .webp .avif), named front.jpg etc.;
+//                       then run `npm run optimize:hits`, which makes front.webp 1100 × 1000 (the
+//                       booklet), back.webp 1200 × 950 (the whole insert: 48 px spine | panel | spine)
+//                       and disc.webp 1024 × 1024, and keeps the originals in art-src/ (not deployed)
+//   audio.mp3           a 30–60 s clip of the song, 128–160 kbps, faded in and out (set `clip` to
+//                       where it was cut from)
+//   lyrics.lrc          time-synced lyrics ([mm:ss.xx] line), timed to the full song; `clip` lines
+//                       them up
+// then switch on the matching flags in `files`, and run `npm run check:hits` (the build runs it too,
+// and stops if anything is missing, unoptimised or stray). Anything missing is drawn from `color`.
 // The booklet's inside page and the tray side of the insert are always drawn: the album's colour as
 // paper, with these details printed on it.
 //
@@ -35,7 +37,11 @@ export interface Track {
   /** True while `streams` is an estimate, not Spotify's own figure. */
   streamsEstimated: boolean;
   streamsAsOf: string;
-  durationMs: number;
+  /**
+   * Where audio.mp3 was cut from the full song, in seconds (e.g. { start: 45, end: 105 }). Lyrics
+   * are timed to the full song; this lines them up with the clip and keeps only the lines inside it.
+   */
+  clip?: { start: number; end: number };
   /** Base colour of the album: the sleeve's card, drawn art when an image is missing, the page tint. */
   color: string;
   /** The jewel case's disc tray: clear (the insert shows through round the disc) or black. */
@@ -45,6 +51,10 @@ export interface Track {
 }
 
 const NONE = { front: false, back: false, disc: false, audio: false, lyrics: false };
+
+// {
+// front: false, back: false, disc: false, audio: false, lyrics: false
+//     }
 
 export const TRACKS: Track[] = [
   {
@@ -61,10 +71,15 @@ export const TRACKS: Track[] = [
     streams: 5200000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 200040,
-    color: "#c4122f",
+    color: "#0D0D0D",
     tray: "clear",
-    files: NONE,
+    files:{
+      front: true,
+      back: true,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
   {
     rank: 2,
@@ -80,10 +95,15 @@ export const TRACKS: Track[] = [
     streams: 4700000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 233713,
-    color: "#3fa7d6",
+    color: "#30B1DB",
     tray: "clear",
-    files: NONE,
+    files:{
+      front: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
   {
     rank: 3,
@@ -99,10 +119,15 @@ export const TRACKS: Track[] = [
     streams: 4400000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 240400,
     color: "#8b9099",
     tray: "clear",
-    files: NONE,
+   files:{
+      front: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
   {
     rank: 4,
@@ -118,16 +143,16 @@ export const TRACKS: Track[] = [
     streams: 4300000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 230453,
-    color: "#d6154f",
+    color: "#E10430",
     tray: "clear",
     files: {
       front: true,
-      back: false,
-      disc: false,
-      audio: false,
-      lyrics: false,
+      back: true,
+      disc: true,
+      audio: true,
+      lyrics: true,
     },
+    clip: { start: 11, end: 71 }
   },
   {
     rank: 5,
@@ -143,10 +168,15 @@ export const TRACKS: Track[] = [
     streams: 4200000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 167303,
-    color: "#e58aa2",
+    color: "#75372C",
     tray: "clear",
-    files: NONE,
+     files: {
+      front: true,
+      back: true,
+      disc: true,
+      audio: true,
+      lyrics: true,
+    }
   },
   {
     rank: 6,
@@ -162,10 +192,15 @@ export const TRACKS: Track[] = [
     streams: 4100000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 182161,
-    color: "#e3a338",
+    color: "#860300",
     tray: "clear",
-    files: NONE,
+    files: {
+      front: true,
+      back: true,
+      disc: true,
+      audio: true,
+      lyrics: true,
+    }
   },
   {
     rank: 7,
@@ -181,10 +216,15 @@ export const TRACKS: Track[] = [
     streams: 4000000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 158040,
-    color: "#f0bf1a",
+    color: "#010101",
     tray: "clear",
-    files: NONE,
+     files: {
+      front: true,
+      back: true,
+      disc: true,
+      audio: true,
+      lyrics: true,
+    }
   },
   {
     rank: 8,
@@ -200,10 +240,15 @@ export const TRACKS: Track[] = [
     streams: 3900000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 173987,
-    color: "#5d6d80",
+    color: "#808B8D",
     tray: "clear",
-    files: NONE,
+     files: {
+      front: true,
+      back: true,
+      disc: true,
+      audio: true,
+      lyrics: true,
+    }
   },
   {
     rank: 9,
@@ -219,10 +264,15 @@ export const TRACKS: Track[] = [
     streams: 3850000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 263400,
-    color: "#2f7fbf",
+    color: "#30B1DB",
     tray: "clear",
-    files: NONE,
+    files:{
+      front: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
   {
     rank: 10,
@@ -238,10 +288,15 @@ export const TRACKS: Track[] = [
     streams: 3800000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
-    durationMs: 141805,
-    color: "#e2703a",
+    color: "#121116",
     tray: "clear",
-    files: NONE,
+     files:{
+      front: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
+    },
   },
 ];
 
@@ -249,6 +304,9 @@ const BASE = "/spotify-hits";
 export const fileUrl = (t: Track, file: ArtFile | "audio.mp3" | "lyrics.lrc") => `${BASE}/${t.slug}/${file}`;
 
 export const artistLine = (t: Track) => (t.featuring.length ? `${t.mainArtist} · feat. ${t.featuring.join(", ")}` : t.mainArtist);
+
+/** How long the song plays here: its clip (until audio.mp3 has loaded and says exactly); a minute without one. */
+export const clipMs = (t: Track) => (t.clip ? Math.max(1, t.clip.end - t.clip.start) * 1000 : 60000);
 
 export const formatTime = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));

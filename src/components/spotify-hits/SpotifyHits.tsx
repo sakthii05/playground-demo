@@ -13,6 +13,8 @@ import { TRACKS, type Track } from "./data/tracks";
 import { wrap, type CaseState, type Live, type Mode } from "./scene/live";
 import type { IntroPhase } from "./scene/Intro";
 import { Player } from "./ui/Player";
+import { Lyrics } from "./ui/Lyrics";
+import { useLyrics } from "./ui/lrc";
 import { TrackHeading, TrackMeta } from "./ui/TrackInfo";
 import { usePlayer } from "./ui/usePlayer";
 import { C, FOCUS, GUTTER, MONO, SANS, cx } from "./ui/tw";
@@ -58,6 +60,8 @@ export default function SpotifyHits() {
   const [caseState, setCaseState] = useState<CaseState>("closed");
   const [busy, setBusyState] = useState(false);
   const [flipped, setFlipped] = useState(false);
+  // lyrics on the open lid's page, for this song: switched off again whenever the song changes
+  const [lyricsOn, setLyricsOn] = useState(false);
   const [narrow, setNarrow] = useState(false);
   // the intro (drawn in the scene): `warm` while the 3D warms up behind it; `phase` as it plays out
   const [warm, setWarm] = useState(true);
@@ -92,7 +96,7 @@ export default function SpotifyHits() {
     anim: { fly: 0, rise: 0, hinge: 0, lift: 0, flip: 0 },
     swap: { from: -1, dir: 1, t: 0 },
     hover: { on: false, x: 0, y: 0 },
-    disc: { hover: false, drag: false, yaw: 0, pitch: 0, vYaw: 0, spin: 0, z: 0 },
+    disc: { hover: false, drag: false, yaw: 0, pitch: 0, vYaw: 0, spin: 0, z: 0, back: 0 },
     playing: false,
     pointer: { x: 0, y: 0 },
     steer: 0,
@@ -100,12 +104,21 @@ export default function SpotifyHits() {
     detailReady: null,
     intro: { target: 0 },
     logoSlot: null,
+    lyrics: false,
+    page: { on: false, x: 0, y: 0, w: 0, h: 0 },
     open: () => {},
     toggleCase: () => {},
     turnOver: () => {},
   });
   const track = TRACKS[active];
-  const player = usePlayer(track);
+  // when a clip plays to its end, the next song follows on its own, unless the visitor does
+  // something in the moment before (see the effect after `skip`)
+  const endedRef = useRef<() => void>(() => {});
+  const player = usePlayer(track, () => endedRef.current());
+  const cover = useCover(track);
+  const lyrics = useLyrics(track);
+  // the lyrics read the clock every frame, through a stable function (the player's own changes)
+  const readTime = useCallback(() => playerRef.current.time(), []);
   // the flows below await animations, so they reach the player through a ref to get the current track's
   const playerRef = useRef(player);
   playerRef.current = player;
@@ -185,6 +198,27 @@ export default function SpotifyHits() {
     Object.assign(live.current.disc, { hover: false, drag: false, vYaw: 0 });
     document.body.style.cursor = "";
   };
+  /**
+   * Resolves once the disc sits label up and level on its hub and the sleeve is back in under it
+   * (the disc homes itself while the lid is closing; this never waits more than 1.5 s).
+   */
+  const discHome = () =>
+    new Promise<void>((done) => {
+      const t0 = performance.now();
+      const turn = Math.PI * 2;
+      const check = () => {
+        const d = live.current.disc;
+        const off = Math.abs(d.yaw - Math.round(d.yaw / turn) * turn);
+        if ((off < 0.01 && Math.abs(d.pitch) < 0.01 && d.back < 0.005) || reduced() || performance.now() - t0 > 1500) {
+          // exactly home (a whole number of turns is the same as none)
+          d.yaw = 0;
+          d.pitch = 0;
+          return done();
+        }
+        requestAnimationFrame(check);
+      };
+      check();
+    });
 
   /**
    * Waits (a frame at a time, at most `limit` ms) until the chosen album's art is on, so a lid never
@@ -206,9 +240,14 @@ export default function SpotifyHits() {
     setCase("open");
   }, [setCase, artReady]);
 
+  /**
+   * Shuts the lid. The disc goes home first: wherever it was turned to, it settles label up and level
+   * on its hub, and the sleeve comes back in under it; only then does the lid close over it.
+   */
   const closeCase = useCallback(async () => {
     resetDisc();
     setCase("closing");
+    await discHome();
     await run(sleeve.current, false, 1.3);
     setCase("closed");
   }, [setCase]);
@@ -295,6 +334,45 @@ export default function SpotifyHits() {
   live.current.open = open;
   live.current.toggleCase = toggleCase;
   live.current.turnOver = turnOver;
+  live.current.lyrics = lyricsOn;
+  // a new song starts with its lyrics off (the visitor turns them on for the songs they want)
+  useEffect(() => {
+    live.current.lyrics = false;
+    setLyricsOn(false);
+  }, [active]);
+
+  // autoplay: when a clip ends, wait a moment; any click, tap, key or scroll in that moment means the
+  // visitor is doing something, so nothing moves. Otherwise the next song slides in and plays.
+  useEffect(() => {
+    let timer = 0 as ReturnType<typeof setTimeout> | 0;
+    const cancel = () => {
+      if (timer) clearTimeout(timer);
+      timer = 0;
+      removeEventListener("pointerdown", cancel, true);
+      removeEventListener("keydown", cancel, true);
+      removeEventListener("wheel", cancel, true);
+    };
+    endedRef.current = () => {
+      if (live.current.mode !== "open" || busyRef.current) return;
+      cancel();
+      addEventListener("pointerdown", cancel, true);
+      addEventListener("keydown", cancel, true);
+      addEventListener("wheel", cancel, true);
+      timer = setTimeout(() => {
+        cancel();
+        if (live.current.mode === "open" && !busyRef.current && !playerRef.current.playing) skip(1);
+      }, 1500);
+    };
+    return cancel;
+  }, [skip]);
+
+  /** The mic button: lyrics on (opening the lid if it is shut, since they print on its page) or off. */
+  const switchLyrics = useCallback(() => {
+    const on = !live.current.lyrics;
+    live.current.lyrics = on;
+    setLyricsOn(on);
+    if (on && live.current.caseState === "closed") toggleCase();
+  }, [toggleCase]);
   // moves on by itself while nobody is using it
   useEffect(() => {
     const id = setInterval(() => {
@@ -308,6 +386,8 @@ export default function SpotifyHits() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // the seek bar uses the arrow keys itself (they must not skip songs there)
+      if (e.target instanceof HTMLElement && e.target.getAttribute("role") === "slider") return;
       const m = live.current.mode;
       const onButton = e.target instanceof HTMLButtonElement;
       if (e.key === "Escape") back();
@@ -368,7 +448,7 @@ export default function SpotifyHits() {
   return (
     <div
       data-sth
-      className={cx(SANS, "relative h-dvh w-full touch-none select-none overflow-hidden text-white")}
+      className={cx(SANS, "relative h-dvh w-full touch-none select-none overflow-clip text-white")}
       style={{ background: C.base }}
       onPointerMove={(e) => {
         live.current.pointer = { x: (e.clientX / innerWidth) * 2 - 1, y: 1 - (e.clientY / innerHeight) * 2 };
@@ -423,7 +503,7 @@ export default function SpotifyHits() {
           WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
         }}
       />
-      <Backdrop track={track} show={atFront} />
+      <Backdrop cover={cover} show={atFront} />
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.6),transparent_30%,transparent_65%,rgba(18,18,18,0.85))]" />
 
       <div className="absolute inset-0">
@@ -489,11 +569,29 @@ export default function SpotifyHits() {
         )}
 
         <AnimatePresence>
+          {mode === "open" && lyricsOn && lyrics?.length ? <Lyrics key={track.slug} live={live} lines={lyrics} color={track.color} time={readTime} /> : null}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {mode === "open" && (
             <TurnButton key="turn" flipped={flipped} disabled={busy} onClick={turnOver} />
           )}
           {mode === "open" && (
-            <Player key="player" track={track} playing={player.playing} elapsed={player.elapsed} duration={player.duration} busy={busy} onToggle={player.toggle} onSkip={skip} />
+            <Player
+              key="player"
+              track={track}
+              playing={player.playing}
+              elapsed={player.elapsed}
+              duration={player.duration}
+              busy={busy}
+              onToggle={player.toggle}
+              onSkip={skip}
+              onSeek={player.seek}
+              cover={cover}
+              lyrics={lyricsOn}
+              hasLyrics={!!lyrics?.length}
+              onLyrics={switchLyrics}
+            />
           )}
         </AnimatePresence>
       </div>
@@ -505,17 +603,25 @@ export default function SpotifyHits() {
  * Behind the chosen album, the page takes on its front cover, softly blurred: it fades and settles in
  * as the album comes forward, and crossfades when next / previous changes the album.
  */
-function Backdrop({ track, show }: { track: Track; show: boolean }) {
-  const [url, setUrl] = useState<string | null>(null);
+/**
+ * The album's front cover as a small image (its front.webp, or the drawn cover when it has none), for
+ * the player's picture and the page behind the open album. Made once per album and cached.
+ */
+function useCover(track: Track) {
+  const [cover, setCover] = useState<{ slug: string; url: string } | null>(null);
   useEffect(() => {
-    if (!show) return;
     let alive = true;
     // the textures module brings three.js with it, so it loads with the scene, not the page
-    import("./scene/textures").then((m) => m.frontBackdrop(track)).then((u) => alive && setUrl(u));
+    import("./scene/textures").then((m) => m.frontBackdrop(track)).then((url) => alive && setCover({ slug: track.slug, url }));
     return () => {
       alive = false;
     };
-  }, [track, show]);
+  }, [track]);
+  return cover?.slug === track.slug ? cover.url : null;
+}
+
+function Backdrop({ cover, show }: { cover: string | null; show: boolean }) {
+  const url = cover;
   return (
     <AnimatePresence>
       {show && url && (
@@ -548,7 +654,8 @@ function TurnButton({ flipped, disabled, onClick }: { flipped: boolean; disabled
       exit={{ opacity: 0, y: 16 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
       className={cx(
-        "pointer-events-auto absolute inset-x-0 bottom-[calc(clamp(14px,3.5vh,36px)+124px)] mx-auto grid size-11 cursor-pointer place-items-center rounded-full border border-white/10 bg-black/45 text-white/85 backdrop-blur transition-colors hover:bg-black/65 hover:text-white disabled:cursor-default disabled:opacity-40",
+        // just above the player's left edge (lined up with it), clear of the album on any screen
+        "pointer-events-auto absolute bottom-[calc(clamp(14px,3.5vh,36px)+104px)] sm:bottom-[calc(clamp(14px,3.5vh,36px)+118px)] left-[max(16px,calc(50%-340px))] grid size-10 cursor-pointer place-items-center rounded-full text-white/80 transition hover:scale-110 hover:text-white disabled:cursor-default disabled:opacity-40",
         FOCUS,
       )}
     >

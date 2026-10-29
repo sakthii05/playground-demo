@@ -4,7 +4,7 @@
 // details printed into it. Surface detail (paper grain, the print's dot screen, the disc's data side,
 // wear on the plastic) is generated here too, so none of it is a download.
 import * as THREE from "three";
-import { fileUrl, formatTime, type ArtFile, type Track } from "../data/tracks";
+import { clipMs, fileUrl, formatTime, type ArtFile, type Track } from "../data/tracks";
 import { PAPER, R } from "./live";
 
 // drawn art size for the square pieces (front cover, booklet page, disc label)
@@ -308,10 +308,10 @@ function paper(g: CanvasRenderingContext2D, w: number, h: number, color: string)
  * Sets up printing on paper of `color`: dark ink multiplies into light stock; on dark stock the
  * ink is a warm off-white, not pure white. A hair of blur is the ink spreading into the fibres.
  */
-function inked(g: CanvasRenderingContext2D, color: string, alpha = 0.9) {
+function inked(g: CanvasRenderingContext2D, color: string, alpha = 1) {
   const onLight = light(color);
   g.globalCompositeOperation = onLight ? "multiply" : "source-over";
-  g.fillStyle = g.strokeStyle = onLight ? shade(color, -0.78) : "#f3eee4";
+  g.fillStyle = g.strokeStyle = onLight ? shade(color, -0.88) : "#f6f1e7";
   g.globalAlpha = alpha;
   g.shadowColor = g.fillStyle as string;
   g.shadowBlur = 0.8;
@@ -417,7 +417,7 @@ function drawFront(t: Track) {
  * reference's tracklist page. The track with a dotted leader to its length, the credits in two
  * columns, and the title set big at the foot.
  */
-function drawInside(t: Track, upright: boolean) {
+function drawInside(t: Track, upright: boolean, blank = false) {
   const [w, h] = px(PAPER.bookW, PAPER.bookH, ART);
   const stock = shade(t.color, -0.12);
   const display = font("--sth-display");
@@ -426,46 +426,45 @@ function drawInside(t: Track, upright: boolean) {
   return face(w, h, upright, 0.045, (g, fw, fh) => {
     const u = Math.min(fw, fh);
     paper(g, fw, fh, stock);
-    const m = u * 0.08;
-    inked(g, stock, 0.7);
-    g.font = `600 ${u * 0.019}px ${sans}`;
-    g.fillText(`NO. ${String(t.rank).padStart(2, "0")}  ·  SPOTIFY ALL-TIME TOP 10`, m, m);
+    // blank: just the paper, for the lyrics to sit on
+    if (blank) return;
+    const m = u * 0.075;
+    inked(g, stock, 0.85);
+    g.font = `700 ${u * 0.024}px ${sans}`;
+    g.fillText(`NO. ${String(t.rank).padStart(2, "0")}  ·  SPOTIFY ALL-TIME TOP 10`, m, m + u * 0.01);
     g.textAlign = "right";
-    g.fillText(String(t.year), fw - m, m);
+    g.fillText(String(t.year), fw - m, m + u * 0.01);
     g.textAlign = "left";
     // the track, with a dotted leader to its length
-    inked(g, stock, 0.92);
-    const y0 = m + u * 0.09;
-    g.font = `500 ${u * 0.026}px ${mono}`;
+    inked(g, stock, 1);
+    const y0 = m + u * 0.11;
+    g.font = `600 ${u * 0.032}px ${mono}`;
     g.fillText("01", m, y0);
-    g.font = `600 ${u * 0.032}px ${sans}`;
-    g.fillText(t.title, m + u * 0.06, y0);
+    g.font = `700 ${u * 0.042}px ${sans}`;
+    g.fillText(t.title, m + u * 0.075, y0);
     const tw = g.measureText(t.title).width;
-    g.font = `500 ${u * 0.026}px ${mono}`;
+    g.font = `600 ${u * 0.032}px ${mono}`;
     g.textAlign = "right";
-    g.fillText(formatTime(t.durationMs), fw - m, y0);
+    g.fillText(formatTime(clipMs(t)), fw - m, y0);
     g.textAlign = "left";
-    g.globalAlpha = 0.45;
-    for (let x = m + u * 0.06 + tw + u * 0.02; x < fw - m - u * 0.09; x += u * 0.012) g.fillRect(x, y0 - 3, 2.5, 2.5);
+    g.globalAlpha = 0.55;
+    for (let x = m + u * 0.075 + tw + u * 0.025; x < fw - m - u * 0.11; x += u * 0.016) g.fillRect(x, y0 - u * 0.006, u * 0.004, u * 0.004);
     // credits, two columns
     const col = (label: string, names: string[], x: number, y: number) => {
-      inked(g, stock, 0.6);
-      g.font = `700 ${u * 0.017}px ${sans}`;
+      inked(g, stock, 0.75);
+      g.font = `800 ${u * 0.022}px ${sans}`;
       g.fillText(label.toUpperCase(), x, y);
-      inked(g, stock, 0.9);
-      g.font = `500 ${u * 0.024}px ${sans}`;
-      names.forEach((name, i) => g.fillText(name, x, y + u * 0.04 + i * u * 0.034));
+      inked(g, stock, 1);
+      g.font = `600 ${u * 0.032}px ${sans}`;
+      names.forEach((name, i) => g.fillText(name, x, y + u * 0.05 + i * u * 0.043, fw * 0.42));
     };
-    const yc = y0 + u * 0.1;
-    col("Written by", t.writers.slice(0, 7), m, yc);
-    col("Produced by", t.producers.slice(0, 5), fw * 0.54, yc);
-    inked(g, stock, 0.55);
-    g.font = `400 ${u * 0.02}px ${sans}`;
-    g.fillText(`${t.album}  ·  ${t.mainArtist}`, m, yc + u * 0.33);
+    const yc = y0 + u * 0.11;
+    col("Written by", t.writers.slice(0, 6), m, yc);
+    col("Produced by", t.producers.slice(0, 5), fw * 0.53, yc);
     // the title, big, at the foot
-    inked(g, stock, 0.95);
+    inked(g, stock, 1);
     const big = t.title.toUpperCase();
-    const size = fit(g, big, display, 800, fw - 2 * m, u * 0.15, 2);
+    const size = fit(g, big, display, 800, fw - 2 * m, u * 0.13, 2);
     g.font = `800 ${size}px ${display}`;
     const rows = lines(g, big, fw - 2 * m);
     rows.forEach((row, i) => g.fillText(row, m - size * 0.04, fh - m - (rows.length - 1 - i) * size * 0.88));
@@ -506,7 +505,7 @@ function drawTray(t: Track, upright: boolean) {
     inked(g, stock, 0.6);
     g.textAlign = "right";
     g.font = `400 ${u * 0.015}px ${mono}`;
-    g.fillText(`℗ ${t.year}  ·  ${formatTime(t.durationMs)}`, fw - m, fh - m);
+    g.fillText(`℗ ${t.year}  ·  ${formatTime(clipMs(t))}`, fw - m, fh - m);
   });
 }
 
@@ -555,7 +554,7 @@ function drawBack(t: Track, spineShare: number) {
   g.fillText(t.title, x0 + w * 0.04, h * 0.34);
   g.textAlign = "right";
   g.font = `500 ${w * 0.017}px ${mono}`;
-  g.fillText(formatTime(t.durationMs), x1, h * 0.34);
+  g.fillText(formatTime(clipMs(t)), x1, h * 0.34);
   g.textAlign = "left";
   inked(g, stock, 0.6);
   g.font = `400 ${w * 0.014}px ${sans}`;
@@ -670,6 +669,8 @@ export async function buildFront(t: Track): Promise<FrontArt> {
  */
 export interface DetailArt {
   inside: THREE.Texture;
+  /** The inside page as bare paper, for the lyrics view. */
+  blank: THREE.Texture;
   tray: THREE.Texture;
   /** The whole insert, spine | back | spine, for the spines. */
   insert: THREE.Texture;
@@ -695,10 +696,12 @@ async function buildDetail(t: Track, upright: boolean): Promise<DetailArt> {
   await idle();
   const inside = texture(drawInside(t, upright));
   await idle();
+  const blank = texture(drawInside(t, upright, true));
+  await idle();
   const tray = texture(drawTray(t, upright));
   await idle();
   const label = texture(di ?? drawLabel(t, front));
-  return { inside, tray, insert, back, label };
+  return { inside, blank, tray, insert, back, label };
 }
 
 /**

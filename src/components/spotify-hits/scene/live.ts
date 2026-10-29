@@ -76,8 +76,8 @@ export interface Live {
   swap: { from: number; dir: number; t: number };
   /** Pointer over the centre cover, -1 … 1 across it. */
   hover: { on: boolean; x: number; y: number };
-  /** The open album's disc: pointer state, its turn (with spin velocity for the drag's inertia), and how high it sits off the tray. */
-  disc: { hover: boolean; drag: boolean; yaw: number; pitch: number; vYaw: number; spin: number; z: number };
+  /** The open album's disc: pointer state, its turn (with spin velocity for the drag's inertia), how high it sits off the tray, and how far the sleeve has backed away from it. */
+  disc: { hover: boolean; drag: boolean; yaw: number; pitch: number; vYaw: number; spin: number; z: number; back: number };
   playing: boolean;
   /** Pointer across the page, -1 … 1, for the light to follow. */
   pointer: { x: number; y: number };
@@ -88,6 +88,10 @@ export interface Live {
   detailReady: string | null;
   /** The intro: loading progress 0 … 1 for its ring (1 only once everything is loaded and warmed up). */
   intro: { target: number };
+  /** Lyrics view on: the open lid's page goes blank for them. */
+  lyrics: boolean;
+  /** Where that page is on screen (CSS px), worked out every frame while the lid lies open. */
+  page: { on: boolean; x: number; y: number; w: number; h: number };
   /** Where the logo sits in the top bar, in CSS px (its centre and size), for the ball to fly to. */
   logoSlot: { x: number; y: number; size: number } | null;
   open: () => void;

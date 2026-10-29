@@ -11,7 +11,7 @@ import { easing } from "maath";
 import { Disc } from "./Disc";
 import { HINGE, caseGeometry } from "./geo";
 import { BLANK, buildFront, detailArt, disposeArt, paperGrain, plasticWear, softShadow, queueUpload, upload, type DetailArt, type FrontArt } from "./textures";
-import { CASE, DISC_REST, HOLD, LIFT, R, S, Z, clamp01, discBusy, easeInOut, lerpTable, offsetOf, smooth, wrap, type LiveRef } from "./live";
+import { CASE, DISC_REST, HOLD, LIFT, PAPER, R, S, Z, clamp01, discBusy, easeInOut, lerpTable, offsetOf, smooth, wrap, type LiveRef } from "./live";
 import type { Track } from "../data/tracks";
 
 const UNIT_PLANE = new THREE.PlaneGeometry(1, 1);
@@ -196,6 +196,8 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
   const spread = useRef<THREE.Group>(null);
   const caseRef = useRef<THREE.Group>(null);
   const lid = useRef<THREE.Group>(null);
+  const booklet = useRef<THREE.Mesh>(null);
+  const corner = useMemo(() => new THREE.Vector3(), []);
   const recede = useRef({ v: 0, hold: 0 });
   const shadow = useRef<THREE.Mesh>(null);
   const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({ map: softShadow(), transparent: true, depthWrite: false, opacity: 0 }), []);
@@ -232,6 +234,7 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
     const g = place.current;
     if (!g || !tilt.current || !upright.current || !spread.current || !caseRef.current || !lid.current) return;
     const { width: vw, height: vh } = state.viewport;
+    const { camera, size } = state;
     const L = layout(vw, vh);
     const sel = chosen();
     const leaving = s.swap.from === index;
@@ -297,6 +300,41 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
     spread.current.position.x = (CASE.hinge / 2) * (1 - open) + SHIFT * open;
     upright.current.rotation.z = L.narrow ? (-Math.PI / 2) * open : 0;
 
+    // the open lid's page: bare paper while the lyrics are on, and its place on screen for them
+    if (selected) {
+      if (detail) {
+        const want = s.lyrics ? detail.blank : detail.inside;
+        if (paper.inside.map !== want) paper.inside.map = want;
+      }
+      const page = s.page;
+      page.on = s.mode === "open" && s.caseState === "open" && s.swap.from < 0 && !!booklet.current;
+      if (page.on && booklet.current) {
+        booklet.current.updateWorldMatrix(true, false);
+        let x0 = Infinity;
+        let y0 = Infinity;
+        let x1 = -Infinity;
+        let y1 = -Infinity;
+        for (const [cx, cy] of [
+          [-1, -1],
+          [1, -1],
+          [1, 1],
+          [-1, 1],
+        ]) {
+          corner.set(PAPER.bookX + (cx * PAPER.bookW) / 2, (cy * PAPER.bookH) / 2, Z.book).applyMatrix4(booklet.current.matrixWorld).project(camera);
+          const px = (corner.x * 0.5 + 0.5) * size.width;
+          const py = (0.5 - corner.y * 0.5) * size.height;
+          x0 = Math.min(x0, px);
+          x1 = Math.max(x1, px);
+          y0 = Math.min(y0, py);
+          y1 = Math.max(y1, py);
+        }
+        page.x = x0;
+        page.y = y0;
+        page.w = x1 - x0;
+        page.h = y1 - y0;
+      }
+    }
+
     // While the disc is being turned the case backs away, far enough for a full flip, and stays
     // there until the disc has settled for a moment; then it comes back in once.
     const d = s.disc;
@@ -304,11 +342,13 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
     const lean = Math.max(Math.abs(Math.sin(d.yaw)), Math.abs(Math.sin(d.pitch)));
     const need = sel ? Math.max(0, R * lean + 0.03 - above) : 0;
     const r = recede.current;
-    if (sel && s.caseState !== "closed" && discBusy(d)) r.hold = HOLD;
+    if (s.caseState === "closing") r.hold = 0;
+    else if (sel && s.caseState !== "closed" && discBusy(d)) r.hold = HOLD;
     else r.hold = Math.max(0, r.hold - dt);
     easing.damp(r, "v", r.hold > 0 ? R + 0.04 - above : 0, 0.22, dt);
     r.v = Math.max(r.v, need);
     caseRef.current.position.z = -r.v;
+    if (sel) d.back = r.v;
 
     // the disc's shadow on the tray: tight while it rests, softer and wider as it lifts away
     if (shadow.current) {
@@ -382,7 +422,7 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
               <group position={[HINGE.x, 0, HINGE.z]}>
                 <group ref={lid}>
                   <group position={[-HINGE.x, 0, -HINGE.z]}>
-                    <mesh geometry={geo.booklet} material={bookMats} raycast={NO_RAY} />
+                    <mesh ref={booklet} geometry={geo.booklet} material={bookMats} raycast={NO_RAY} />
                     <mesh geometry={geo.lidPlate} material={plate} raycast={NO_RAY} />
                     <mesh geometry={geo.lidFrame} material={p.edge} raycast={NO_RAY} />
                     <mesh geometry={geo.hitLid} material={HIT} />
