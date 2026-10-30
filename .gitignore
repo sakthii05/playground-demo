@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# album assets: only the file types the Top Hits page uses are kept and deployed, so a stray file
+# (a saved web page, an editor backup, the full-length song) never reaches the live site
+/public/spotify-hits/**/*
+!/public/spotify-hits/**/
+!/public/spotify-hits/**/*.webp
+!/public/spotify-hits/**/*.mp3
+!/public/spotify-hits/**/*.lrc
+!/public/spotify-hits/**/.gitkeep
+
+# Top Hits: the original art optimize:hits was made from (kept locally, never deployed)
+/art-src/

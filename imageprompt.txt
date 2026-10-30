@@ -1,0 +1,34 @@
+Front cover → front.webp, 1340 × 1220 px
+Covers are square and the booklet is about 10% wider than tall, so the prompt extends the sides rather than cropping.
+
+Use the attached album cover as the source. Keep the original artwork exactly as it is: same composition, subject, colours, typography and logos, nothing redrawn, restyled or moved.
+1. Extend the canvas to exactly 1340x1220 pixels (aspect ratio 1.098:1). Keep the original artwork centred at full height and outpaint only the extra width on the left and right, continuing the existing background seamlessly (same colours, texture, lighting and grain) so no seam shows.
+2. Make it look like a flat high-quality print on slightly textured matte paper: add very subtle paper fibre and fine print grain across the whole image, with ink sitting into the paper. Keep it faint enough that the artwork stays crisp. No gloss, no glare.
+3. Remove any watermark, border, frame, rounded corners, streaming-app interface or "explicit" sticker that is not part of the printed design.
+Output: flat artwork only, viewed perfectly straight on, edge to edge. No mockup, no CD case, no perspective, no shadows, no lighting effects.
+
+Back insert with barcode → back.webp, 1490 × 1180 px
+
+There’s no official back to copy, so this builds one in the cover’s own style.
+
+Use the attached album cover as the style reference. Design a matching CD jewel case back insert, laid out flat, exactly 1490x1180 pixels, in the same visual language: the same colour palette (base colour close to {BASE_COLOR_HEX}), the same typography style, and the same texture and mood. Use a cropped, enlarged or softly blurred detail of the cover's artwork as the background, calm and dark enough for text to read on it.
+
+Layout, left to right:
+1. Left spine: a narrow vertical strip exactly 60 px wide at the far left edge, separated by a thin fold line, with "{ARTIST}  {SONG}" in small bold capitals running vertically, in the cover's font style.
+2. Back panel: the middle 1370 px.
+3. Right spine: an identical 60 px strip at the far right edge with the same vertical text.
+
+Back panel text, all spelled exactly as written: "{SONG}" large at top left with "{ARTIST}" below it. A tracklist line "01  {SONG}" with a dotted leader to "{DURATION}". Small credits: "Written by {WRITERS}", "Produced by {PRODUCERS}", "{ALBUM} · {YEAR}". Bottom left: a realistic black-on-white EAN-13 barcode in a white rectangle, digits underneath. Bottom right: small "℗ {YEAR} {ARTIST}". Keep all text 30 px from the edges and the fold lines.
+
+Printed on matte uncoated paper: subtle fibre texture and fine grain throughout, no gloss.
+Output: flat artwork only, viewed straight on, edge to edge. No mockup, no case, no perspective, no shadows.
+
+
+Disc label → disc.webp, 1200 × 1200 px
+The page cuts this to a circle and covers the middle 38% with the clear hub, so the art is arranged round a ring.
+
+Use the attached album cover as the source. Create a CD disc label print from it, exactly 1200x1200 pixels, square.
+Fill the whole square with the cover's artwork, re-composed for a disc: scale and position it so the main subject sits in the ring between a central circle of 460 px diameter and the outer edge of the 1200 px circle. Nothing important inside the central 460 px circle (the hub and hole cover it), and nothing important within 20 px of the outer circle's edge. Extend the background seamlessly where needed; keep the original colours and style, nothing restyled.
+Add text in the cover's typography style, spelled exactly as written: "{SONG}" and "{ARTIST}" curving along the upper arc, and small "{ALBUM} · {YEAR}" curving along the lower arc.
+Make it look screen-printed on matte silver: very fine halftone dot texture, flat inks, slight ink grain, no gloss.
+Output: flat artwork only, viewed straight on. No mockup, no disc photo, no shadows, no reflections, no shine.
