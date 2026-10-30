@@ -1,5 +1,6 @@
 "use client";
 // The player bar under the open album: lyrics on / off, previous, play / pause, next, and progress.
+// A song without its clip keeps previous / next, and says sorry where the progress bar would be.
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { motion } from "motion/react";
 import { TbMicrophone2 } from "react-icons/tb";
@@ -24,13 +25,17 @@ interface Props {
 }
 
 export function Player({ track, playing, elapsed, duration, busy, onToggle, onSkip, onSeek, cover, lyrics, hasLyrics, onLyrics }: Props) {
+  const audio = track.files.audio;
+  // lyrics follow the song, so without it there is nothing for them to follow
+  const canLyrics = audio && hasLyrics;
+  const lyricsLabel = !audio ? "No audio for this song" : !hasLyrics ? "No lyrics for this song" : lyrics ? "Hide lyrics" : "Show lyrics";
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 24 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="pointer-events-auto absolute inset-x-0 bottom-[clamp(14px,3.5vh,36px)] mx-auto w-[min(680px,calc(100%-32px))] rounded-2xl border border-white/[0.06] p-3 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.7)] backdrop-blur-xl sm:p-4"
+      className="pointer-events-auto absolute inset-x-0 bottom-[clamp(14px,3.5vh,36px)] mx-auto w-[min(680px,calc(100%-32px))] rounded-2xl border border-white/6 p-3 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.7)] backdrop-blur-xl sm:p-4"
       style={{ background: `${C.surface}d9` }}
     >
       <div className="flex items-center gap-3">
@@ -51,17 +56,17 @@ export function Player({ track, playing, elapsed, duration, busy, onToggle, onSk
           <button
             type="button"
             onClick={onLyrics}
-            disabled={!hasLyrics}
+            disabled={!canLyrics}
             aria-pressed={lyrics}
-            aria-label={hasLyrics ? (lyrics ? "Hide lyrics" : "Show lyrics") : "No lyrics for this song"}
-            title={hasLyrics ? (lyrics ? "Hide lyrics" : "Show lyrics") : "No lyrics for this song"}
+            aria-label={lyricsLabel}
+            title={lyricsLabel}
             className={cx(
               "relative grid size-9 cursor-pointer place-items-center rounded-full transition hover:scale-105 disabled:cursor-default disabled:opacity-35 disabled:hover:scale-100",
               lyrics ? "text-[#1ed760]" : "text-white/75 hover:text-white",
               FOCUS,
             )}
           >
-            <TbMicrophone2 className="size-[18px]" aria-hidden />
+            <TbMicrophone2 className="size-4.5" aria-hidden />
             {/* Spotify marks an active toggle with a small dot under it */}
             {lyrics && <span className="absolute bottom-0.5 size-1 rounded-full bg-[#1ed760]" aria-hidden />}
           </button>
@@ -69,8 +74,9 @@ export function Player({ track, playing, elapsed, duration, busy, onToggle, onSk
           <button
             type="button"
             onClick={onToggle}
+            disabled={!audio}
             aria-label={playing ? "Pause" : "Play"}
-            className={cx("grid size-11 cursor-pointer place-items-center rounded-full text-black transition-transform hover:scale-105 active:scale-95", FOCUS)}
+            className={cx("grid size-11 cursor-pointer place-items-center rounded-full text-black transition-transform hover:scale-105 active:scale-95 disabled:cursor-default disabled:opacity-35 disabled:hover:scale-100", FOCUS)}
             style={{ background: C.green }}
           >
             {playing ? (
@@ -87,7 +93,13 @@ export function Player({ track, playing, elapsed, duration, busy, onToggle, onSk
           <Skip dir={1} disabled={busy} onClick={() => onSkip(1)} />
         </div>
       </div>
-      <Seek elapsed={elapsed} duration={duration} onSeek={onSeek} />
+      {audio ? (
+        <Seek elapsed={elapsed} duration={duration} onSeek={onSeek} />
+      ) : (
+        <p role="status" className={cx(SANS, "mt-3 flex h-4 items-center justify-center text-[12px]")} style={{ color: C.subdued }}>
+          Sorry, audio isn’t available for this song.
+        </p>
+      )}
     </motion.div>
   );
 }

@@ -448,16 +448,23 @@ export default function SpotifyHits() {
   return (
     <div
       data-sth
-      className={cx(SANS, "relative h-dvh w-full touch-none select-none overflow-clip text-white")}
+      className={cx(
+        SANS,
+        "relative h-dvh w-full touch-none select-none overflow-clip text-white",
+      )}
       style={{ background: C.base }}
       onPointerMove={(e) => {
-        live.current.pointer = { x: (e.clientX / innerWidth) * 2 - 1, y: 1 - (e.clientY / innerHeight) * 2 };
+        live.current.pointer = {
+          x: (e.clientX / innerWidth) * 2 - 1,
+          y: 1 - (e.clientY / innerHeight) * 2,
+        };
         const d = drag.current;
         if (!d || e.pointerId !== d.id) return;
         const dx = e.clientX - d.x;
         if (!d.moved) {
           // a drag starts once it is clearly sideways; until then it may still be a click
-          if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - d.y)) return;
+          if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - d.y))
+            return;
           d.moved = true;
         }
         const now = performance.now();
@@ -469,7 +476,16 @@ export default function SpotifyHits() {
       onPointerDown={(e) => {
         if (live.current.mode !== "browse" || e.button !== 0) return;
         const now = performance.now();
-        drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: live.current.target, moved: false, lx: e.clientX, lt: now, v: 0 };
+        drag.current = {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          from: live.current.target,
+          moved: false,
+          lx: e.clientX,
+          lt: now,
+          v: 0,
+        };
       }}
       onPointerUp={(e) => endDrag(e.pointerId)}
       onPointerCancel={(e) => endDrag(e.pointerId)}
@@ -477,10 +493,15 @@ export default function SpotifyHits() {
       onWheel={(e) => {
         if (live.current.mode !== "browse") return;
         const w = wheel.current;
-        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        const delta =
+          Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
         // a mouse wheel clicks in whole notches: one album each. A trackpad sends a stream of small
         // deltas (with momentum): those move the carousel directly and it settles when they stop.
-        const notch = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+        const notch =
+          e.deltaMode === 1 ||
+          (e.deltaX === 0 &&
+            Math.abs(e.deltaY) >= 50 &&
+            Number.isInteger(e.deltaY));
         if (notch) {
           const now = performance.now();
           if (now - w.stepped > 120) step(Math.sign(delta));
@@ -499,38 +520,95 @@ export default function SpotifyHits() {
         style={{
           backgroundColor: track.color,
           opacity: atFront ? 0.55 : 0.3,
-          maskImage: "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
-          WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
+          maskImage:
+            "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse 70% 60% at 50% 48%, #000 0%, transparent 75%)",
         }}
       />
       <Backdrop cover={cover} show={atFront} />
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.6),transparent_30%,transparent_65%,rgba(18,18,18,0.85))]" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.6),transparent_30%,transparent_65%,rgba(18,18,18,0.85))]"
+      />
 
       <div className="absolute inset-0">
-        <Scene live={live} tracks={TRACKS} active={active} open={mode !== "browse"} warm={warm} onReady={onReady} onPhase={onPhase} />
+        <Scene
+          live={live}
+          tracks={TRACKS}
+          active={active}
+          open={mode !== "browse"}
+          warm={warm}
+          onReady={onReady}
+          onPhase={onPhase}
+        />
       </div>
 
-      {covered && <div aria-hidden className="absolute inset-0 z-30" style={{ background: C.base }} />}
+      {covered && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-30"
+          style={{ background: C.base }}
+        />
+      )}
 
       {/* overlay: hidden while the intro's black screen is up, fading in as it crumbles away */}
-      <div className={cx("pointer-events-none absolute inset-0 transition-opacity duration-[1400ms] ease-out", phase === "loading" ? "opacity-0" : "opacity-100")}>
-        <header className={cx(GUTTER, "flex items-center justify-between pt-[clamp(14px,2.6vh,28px)]")}>
+      <div
+        className={cx(
+          "pointer-events-none absolute inset-0 transition-opacity duration-1400 ease-out",
+          phase === "loading" ? "opacity-0" : "opacity-100",
+        )}
+      >
+        <header
+          className={cx(
+            GUTTER,
+            "flex items-center justify-between pt-[clamp(14px,2.6vh,28px)]",
+          )}
+        >
           <div className="flex items-center gap-2.5">
             {/* left empty: the intro's disco ball flies here and stays, turning */}
             <span ref={logoSlot} className="block size-9" aria-hidden />
             <div className="leading-tight">
               <p className="flex items-center gap-2 text-[15px] font-bold tracking-[-0.01em]">
                 Top Hits
-                <span className={cx(MONO, "rounded-full border border-white/20 px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-white/70")}>Fan concept</span>
+                {/* text-box trims the line to the capitals, so the padding is the same on every side */}
+                <span
+                  className={cx(
+                    MONO,
+                    "rounded-full border border-white/20 p-1.5 text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-white/70 [text-box:trim-both_cap_alphabetic]",
+                  )}
+                >
+                  Fan concept 2026
+                </span>
               </p>
               <p className="text-[11px]" style={{ color: C.subdued }}>
                 Most streamed of all time
               </p>
             </div>
           </div>
-          <p className={cx(MONO, "text-[12px]")} style={{ color: C.subdued }}>
-            <span className="text-white">{String(active + 1).padStart(2, "0")}</span> / {String(N).padStart(2, "0")}
-          </p>
+          <div className="flex items-end gap-4">
+            <p className="text-[11px] hidden md:block" style={{ color: C.subdued }}>
+              Created by{" "}
+              <a
+                href="https://sakthi-portfolio-mauve.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cx(
+                  "pointer-events-auto font-semibold transition-colors hover:underline",
+                  FOCUS,
+                )}
+                style={{ color: C.green }}
+              >
+                @sakthi
+              </a>
+            </p>
+            <p className={cx(MONO, "text-[12px]")} style={{ color: C.subdued }}>
+              <span className="text-white">
+                {String(active + 1).padStart(2, "0")}
+              </span>{" "}
+              / {String(N).padStart(2, "0")}
+            </p>
+          </div>
         </header>
 
         <TrackHeading track={track} hidden={!browsing} />
@@ -543,7 +621,14 @@ export default function SpotifyHits() {
           </>
         )}
         {browsing && (
-          <button type="button" onClick={open} className={cx("pointer-events-auto sr-only focus:not-sr-only focus:absolute focus:left-1/2 focus:top-1/2 focus:-translate-x-1/2 focus:rounded-full focus:bg-black focus:px-4 focus:py-2", FOCUS)}>
+          <button
+            type="button"
+            onClick={open}
+            className={cx(
+              "pointer-events-auto sr-only focus:not-sr-only focus:absolute focus:left-1/2 focus:top-1/2 focus:-translate-x-1/2 focus:rounded-full focus:bg-black focus:px-4 focus:py-2",
+              FOCUS,
+            )}
+          >
             Open {track.title}
           </button>
         )}
@@ -553,28 +638,72 @@ export default function SpotifyHits() {
             type="button"
             onClick={back}
             disabled={busy}
-            className={cx(GUTTER, "pointer-events-auto absolute left-0 top-[clamp(64px,10vh,96px)] flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-white/80 transition-colors hover:text-white disabled:cursor-default disabled:opacity-50", FOCUS)}
+            className={cx(
+              GUTTER,
+              "pointer-events-auto absolute left-0 top-[clamp(64px,10vh,96px)] flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-white/80 transition-colors hover:text-white disabled:cursor-default disabled:opacity-50",
+              FOCUS,
+            )}
           >
-            <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-              <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 16 16"
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden
+            >
+              <path
+                d="M10 3 5 8l5 5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
-            Back to the top 10
-            <span className={cx(MONO, "hidden rounded border border-white/15 px-1.5 py-px text-[10px] text-white/50 sm:inline")}>Esc</span>
+            <span className="hidden md:inline">Back to the top 10</span>
+            <span
+              className={cx(
+                MONO,
+                "hidden rounded border border-white/15 px-1.5 py-px text-[10px] text-white/50 sm:inline",
+              )}
+            >
+              Esc
+            </span>
           </button>
         )}
         {mode === "open" && !busy && (
-          <p className={cx(MONO, "absolute inset-x-0 top-[clamp(64px,10vh,96px)] hidden text-center text-[11px] text-white/45 sm:block")}>
-            {flipped ? "The back of the case · click it to turn it back" : caseState === "open" ? "Drag the disc · click the lid to shut it" : "Click the case to open it"}
+          <p
+            className={cx(
+              MONO,
+              "absolute inset-x-0 top-[clamp(64px,10vh,96px)] hidden text-center text-[11px] text-white/45 sm:block",
+            )}
+          >
+            {flipped
+              ? "The back of the case · click it to turn it back"
+              : caseState === "open"
+                ? "Drag the disc · click the lid to shut it"
+                : "Click the case to open it"}
           </p>
         )}
 
         <AnimatePresence>
-          {mode === "open" && lyricsOn && lyrics?.length ? <Lyrics key={track.slug} live={live} lines={lyrics} color={track.color} time={readTime} /> : null}
+          {mode === "open" && lyricsOn && lyrics?.length ? (
+            <Lyrics
+              key={track.slug}
+              live={live}
+              lines={lyrics}
+              color={track.color}
+              time={readTime}
+            />
+          ) : null}
         </AnimatePresence>
 
         <AnimatePresence>
           {mode === "open" && (
-            <TurnButton key="turn" flipped={flipped} disabled={busy} onClick={turnOver} />
+            <TurnButton
+              key="turn"
+              flipped={flipped}
+              disabled={busy}
+              onClick={turnOver}
+            />
           )}
           {mode === "open" && (
             <Player

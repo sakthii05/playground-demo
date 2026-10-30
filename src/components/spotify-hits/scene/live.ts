@@ -15,7 +15,8 @@ export const Z = {
   back: -1.2 * MM, // clear back plate, outer face
   inlay: 0.35 * MM, // paper back insert lies on the back plate, this thick
   tray: 4.8 * MM, // the clear tray's plate, underside…
-  trayTop: 6 * MM, // …and top, where the disc sits
+  well: 5.15 * MM, // the floor of the round pocket the disc sits in…
+  trayTop: 6 * MM, // …and the tray's top, round it
   wall: 7.5 * MM, // the base's walls stand this high
   rim: 7.6 * MM, // the lid's rim comes down to here, outside the walls
   book: 8.6 * MM, // booklet, clipped under the lid plate
@@ -53,10 +54,12 @@ export const DISC = {
  */
 export const LIFT = 0.018;
 export const POP = 0.04;
-/** Where the disc's centre sits on the tray, resting. */
-export const DISC_REST = Z.trayTop + H / 2 + 0.003;
+/** The pocket in the tray: a little wider than the disc, deep enough that the resting disc sits flush. */
+export const WELL = R + 0.6 * MM;
+/** Where the disc's centre sits in its pocket, resting. */
+export const DISC_REST = Z.well + H / 2 + 0.003;
 /** The hub the disc clips onto: just inside the hole, standing flush with the raised disc's top. */
-export const HUB = { r: R * 0.118, top: Z.trayTop + H + 0.003 + LIFT };
+export const HUB = { r: R * 0.118, top: DISC_REST + H / 2 + LIFT };
 /** How long the sleeve stays back after the disc stops turning, so it does not bob in and out. */
 export const HOLD = 0.9;
 

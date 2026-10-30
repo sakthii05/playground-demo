@@ -109,7 +109,7 @@ export function Lyrics({ live, lines, color, time }: Props) {
         WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, #000 16%, #000 84%, transparent 100%)",
       }}
     >
-      <div ref={list} className="px-[9%] transition-transform duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)]" style={{ fontSize: "var(--fs)" }}>
+      <div ref={list} className="px-[9%] transition-transform duration-650 ease-[cubic-bezier(0.22,1,0.36,1)]" style={{ fontSize: "var(--fs)" }}>
         {lines.map((line, k) => {
           const now = k === current;
           const done = k < current;

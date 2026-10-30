@@ -18,6 +18,16 @@ const UNIT_PLANE = new THREE.PlaneGeometry(1, 1);
 /** Visual parts are never tested by the pointer; the plain hit boxes stand in for them. */
 const NO_RAY = () => null;
 const HIT = new THREE.MeshBasicMaterial({ visible: false });
+/**
+ * Hover tilt: how far the corner under the pointer presses back (radians, per axis), and how far the
+ * case comes forward while it is hovered. The pointer is read off a flat area the size of the case
+ * that does not tilt with it, so a strong tilt cannot pull the edge out from under the pointer (which
+ * would end the hover, level the case, start the hover again, and flicker).
+ */
+const TILT = 0.4;
+const TILT_POP = 0.07;
+const HOVER_AREA = new THREE.PlaneGeometry(CASE.w, CASE.h);
+const HOVER_HIT = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
 /** How long an album must stay in the centre before its detail art is made (none while scrolling past). */
 const SETTLE_MS = 450;
 /** Open, the lid lies flat beside the base; this slides the pair so it stays centred. */
@@ -291,7 +301,8 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
 
     // hover tilt: the corner under the pointer presses back
     const h = s.hover.on && ((s.mode === "browse" && isCentre()) || frontShut()) ? s.hover : null;
-    easing.dampE(tilt.current.rotation, [h ? -h.y * 0.2 : 0, h ? h.x * 0.2 : 0, 0], 0.18, dt);
+    easing.dampE(tilt.current.rotation, [h ? -h.y * TILT : 0, h ? h.x * TILT : 0, 0], 0.2, dt);
+    easing.damp(tilt.current.position, "z", h ? TILT_POP : 0, 0.2, dt);
 
     // the lid swings over on its hinge to lie flat; the pair slides to stay centred, and on tall
     // screens turns upright as it opens so the lid ends up above the base
@@ -338,7 +349,7 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
     // While the disc is being turned the case backs away, far enough for a full flip, and stays
     // there until the disc has settled for a moment; then it comes back in once.
     const d = s.disc;
-    const above = DISC_REST - Z.trayTop + (sel ? s.anim.lift * LIFT : 0);
+    const above = DISC_REST - Z.well + (sel ? s.anim.lift * LIFT : 0);
     const lean = Math.max(Math.abs(Math.sin(d.yaw)), Math.abs(Math.sin(d.pitch)));
     const need = sel ? Math.max(0, R * lean + 0.03 - above) : 0;
     const r = recede.current;
@@ -355,15 +366,15 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
       const gap = Math.max(0, d.z - DISC_REST) + r.v;
       const spreadK = 1 + gap * 0.9;
       shadow.current.scale.set(R * 2.08 * spreadK, R * 2.08 * spreadK * (1 - 0.25 * lean), 1);
-      shadow.current.position.set(gap * 0.12, -gap * 0.32, Z.trayTop + 0.002);
+      shadow.current.position.set(gap * 0.12, -gap * 0.32, Z.well + 0.002);
       shadowMat.opacity = sel ? 0.5 / (1 + gap * 2.2) : 0;
     }
   });
 
   const move = (e: ThreeEvent<PointerEvent>) => {
-    if (!tilt.current || !((live.current.mode === "browse" && isCentre()) || frontShut())) return;
+    if (!place.current || !((live.current.mode === "browse" && isCentre()) || frontShut())) return;
     e.stopPropagation();
-    const q = tilt.current.worldToLocal(e.point.clone());
+    const q = place.current.worldToLocal(e.point.clone());
     live.current.hover = { on: true, x: THREE.MathUtils.clamp(q.x / (CASE.w / 2), -1, 1), y: THREE.MathUtils.clamp(q.y / (S / 2), -1, 1) };
     document.body.style.cursor = "pointer";
   };
@@ -405,7 +416,9 @@ export const Album = memo(function Album({ track, index, count, selected, open, 
 
   return (
     <group ref={place}>
-      <group ref={tilt} onPointerMove={move} onPointerOut={out} onPointerOver={over} onClick={click}>
+      {/* the hover area: the case's footprint, half way through it, level whatever the tilt */}
+      <mesh geometry={HOVER_AREA} material={HOVER_HIT} position={[0, 0, (Z.top + Z.back) / 2]} onPointerMove={move} onPointerOut={out} onClick={click} />
+      <group ref={tilt} onPointerOver={over} onClick={click}>
         <group ref={upright}>
           <group ref={spread}>
             <group ref={caseRef}>

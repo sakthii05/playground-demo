@@ -15,8 +15,8 @@
 // The booklet's inside page and the tray side of the insert are always drawn: the album's colour as
 // paper, with these details printed on it.
 //
-// Credits are the commonly published songwriting and production credits; check them against the
-// release before shipping. Stream counts are estimates from third-party trackers (late 2025) until
+// Credits, albums, years and the facts in each blurb were checked against each song's Wikipedia
+// article (October 2026). Stream counts are estimates from third-party trackers (late 2025) until
 // they are replaced with Spotify's own figures.
 
 export type ArtFile = "front.webp" | "back.webp" | "disc.webp";
@@ -47,14 +47,8 @@ export interface Track {
   /** The jewel case's disc tray: clear (the insert shows through round the disc) or black. */
   tray: "clear" | "black";
   /** Which files exist in public/spotify-hits/<slug>/. */
-  files: { front: boolean; back: boolean; disc: boolean; audio: boolean; lyrics: boolean };
+    files: { front: boolean; back: boolean; disc: boolean; audio: boolean; lyrics: boolean };
 }
-
-const NONE = { front: false, back: false, disc: false, audio: false, lyrics: false };
-
-// {
-// front: false, back: false, disc: false, audio: false, lyrics: false
-//     }
 
 export const TRACKS: Track[] = [
   {
@@ -73,13 +67,14 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     color: "#0D0D0D",
     tray: "clear",
-    files:{
+    files: {
       front: true,
       back: true,
-      disc: false,
-      audio: false,
-      lyrics: false,
+      disc: true,
+      audio: true,
+      lyrics: true,
     },
+    clip: { start: 11, end: 71 }
   },
   {
     rank: 2,
@@ -90,20 +85,21 @@ export const TRACKS: Track[] = [
     album: "÷ (Divide)",
     year: 2017,
     writers: ["Ed Sheeran", "Steve Mac", "Johnny McDaid", "Kandi Burruss", "Tameka Cottle", "Kevin Briggs"],
-    producers: ["Steve Mac", "Ed Sheeran", "Johnny McDaid"],
+    producers: ["Ed Sheeran", "Steve Mac"],
     blurb: "Written for Rihanna, kept for himself: a marimba loop that sat at No. 1 in over 30 countries.",
     streams: 4700000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
     color: "#30B1DB",
     tray: "clear",
-    files:{
+    files: {
       front: true,
       back: false,
       disc: false,
-      audio: false,
-      lyrics: false,
+      audio: true,
+      lyrics: true,
     },
+    clip: { start: 0, end: 60 }
   },
   {
     rank: 3,
@@ -121,7 +117,7 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     color: "#8b9099",
     tray: "clear",
-   files:{
+    files: {
       front: true,
       back: false,
       disc: false,
@@ -138,8 +134,8 @@ export const TRACKS: Track[] = [
     album: "Starboy",
     year: 2016,
     writers: ["Abel Tesfaye", "Thomas Bangalter", "Guy-Manuel de Homem-Christo", "Jason Quenneville", "Martin McKinney", "Henry Walter"],
-    producers: ["Daft Punk", "Doc McKinney", "Cirkut", "The Weeknd"],
-    blurb: "The Weeknd's reinvention, built with Daft Punk in one of their last studio collaborations.",
+    producers: ["Daft Punk"],
+    blurb: "The title track of The Weeknd's 2016 reinvention, co-written and produced by Daft Punk.",
     streams: 4300000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
@@ -170,13 +166,14 @@ export const TRACKS: Track[] = [
     streamsAsOf: "2025-12",
     color: "#75372C",
     tray: "clear",
-     files: {
+    files: {
       front: true,
-      back: true,
-      disc: true,
+      back: false,
+      disc: false,
       audio: true,
       lyrics: true,
-    }
+    },
+    clip: { start: 3, end: 63 }
   },
   {
     rank: 6,
@@ -196,10 +193,10 @@ export const TRACKS: Track[] = [
     tray: "clear",
     files: {
       front: true,
-      back: true,
-      disc: true,
-      audio: true,
-      lyrics: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
     }
   },
   {
@@ -212,18 +209,18 @@ export const TRACKS: Track[] = [
     year: 2018,
     writers: ["Austin Post", "Khalif Brown", "Carl Rosen", "Louis Bell", "Billy Walsh", "Carter Lang"],
     producers: ["Louis Bell", "Carter Lang"],
-    blurb: "A laid-back duet made for Spider-Verse that outlived the film on the charts for years.",
+    blurb: "A laid-back duet made for Spider-Verse that spent 33 weeks in the Billboard Hot 100's top 10, a record at the time.",
     streams: 4000000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
     color: "#010101",
     tray: "clear",
-     files: {
+    files: {
       front: true,
-      back: true,
-      disc: true,
-      audio: true,
-      lyrics: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
     }
   },
   {
@@ -234,20 +231,20 @@ export const TRACKS: Track[] = [
     featuring: ["Wizkid", "Kyla"],
     album: "Views",
     year: 2016,
-    writers: ["Aubrey Graham", "Paul Jefferies", "Noah Shebib", "Ayodeji Balogun", "Kyla Reid"],
-    producers: ["Nineteen85", "Wizkid", "DJ Maphorisa"],
+    writers: ["Aubrey Graham", "Ayodeji Balogun", "Kyla Smith", "Paul Jefferies", "Noah Shebib", "Errol Reid", "Luke Reid", "Corey Johnson", "Logan Sama"],
+    producers: ["Nineteen85", "40", "Wizkid", "Sarz", "DJ Maphorisa"],
     blurb: "Dancehall and UK funky round a sample of Kyla's 2008 'Do You Mind', and Spotify's first song to a billion.",
     streams: 3900000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
     color: "#808B8D",
     tray: "clear",
-     files: {
+    files: {
       front: true,
-      back: true,
-      disc: true,
-      audio: true,
-      lyrics: true,
+      back: false,
+      disc: false,
+      audio: false,
+      lyrics: false,
     }
   },
   {
@@ -260,19 +257,20 @@ export const TRACKS: Track[] = [
     year: 2017,
     writers: ["Ed Sheeran"],
     producers: ["Ed Sheeran", "Will Hicks"],
-    blurb: "A waltz-time love song Ed Sheeran wrote for his wife, Cherry Seaborn.",
+    blurb: "A slow-dance ballad Ed Sheeran wrote about Cherry Seaborn, later his wife.",
     streams: 3850000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
     color: "#30B1DB",
     tray: "clear",
-    files:{
+    files: {
       front: true,
       back: false,
       disc: false,
-      audio: false,
-      lyrics: false,
+      audio: true,
+      lyrics: true,
     },
+    clip: { start: 95, end: 155 }
   },
   {
     rank: 10,
@@ -282,21 +280,22 @@ export const TRACKS: Track[] = [
     featuring: ["Justin Bieber"],
     album: "F*ck Love 3: Over You",
     year: 2021,
-    writers: ["Charlton Howard", "Justin Bieber", "Blake Slatkin", "Omer Fedi", "Charlie Puth", "Magnus Høiberg", "Michael Mule", "Isaac De Boni"],
-    producers: ["Cashmere Cat", "Charlie Puth", "Blake Slatkin", "Omer Fedi", "FnZ"],
+    writers: ["Charlton Howard", "Justin Bieber", "Magnus Høiberg", "Charlie Puth", "Omer Fedi", "Blake Slatkin", "Michael Mule", "Isaac De Boni", "Subhaan Rahmaan"],
+    producers: ["Cashmere Cat", "Charlie Puth", "Omer Fedi", "Blake Slatkin"],
     blurb: "Two and a quarter minutes of breathless synth-pop, and one of the biggest songs of 2021.",
     streams: 3800000000,
     streamsEstimated: true,
     streamsAsOf: "2025-12",
     color: "#121116",
     tray: "clear",
-     files:{
+    files: {
       front: true,
       back: false,
       disc: false,
-      audio: false,
-      lyrics: false,
+      audio: true,
+      lyrics: true,
     },
+    clip: { start: 8, end: 68 }
   },
 ];
 

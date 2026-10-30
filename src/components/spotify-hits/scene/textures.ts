@@ -5,7 +5,7 @@
 // wear on the plastic) is generated here too, so none of it is a download.
 import * as THREE from "three";
 import { clipMs, fileUrl, formatTime, type ArtFile, type Track } from "../data/tracks";
-import { PAPER, R } from "./live";
+import { PAPER } from "./live";
 
 // drawn art size for the square pieces (front cover, booklet page, disc label)
 const ART = 1024;
@@ -412,6 +412,9 @@ function drawFront(t: Track) {
   return c;
 }
 
+/** The clip's length as printed on the paper; a dash for a song with no clip. */
+const length = (t: Track) => (t.files.audio ? formatTime(clipMs(t)) : "–:––");
+
 /**
  * The booklet's inside page, seen when the case opens: printed on the album's colour like the
  * reference's tracklist page. The track with a dotted leader to its length, the credits in two
@@ -445,7 +448,7 @@ function drawInside(t: Track, upright: boolean, blank = false) {
     const tw = g.measureText(t.title).width;
     g.font = `600 ${u * 0.032}px ${mono}`;
     g.textAlign = "right";
-    g.fillText(formatTime(clipMs(t)), fw - m, y0);
+    g.fillText(length(t), fw - m, y0);
     g.textAlign = "left";
     g.globalAlpha = 0.55;
     for (let x = m + u * 0.075 + tw + u * 0.025; x < fw - m - u * 0.11; x += u * 0.016) g.fillRect(x, y0 - u * 0.006, u * 0.004, u * 0.004);
@@ -481,16 +484,9 @@ function drawTray(t: Track, upright: boolean) {
   const sans = font("--sth-sans");
   const mono = font("--sth-mono");
   const display = font("--sth-display");
-  const disc = (2 * R) / Math.max(PAPER.inlayW, PAPER.inlayH);
   return face(w, h, upright, 0.045, (g, fw, fh) => {
     const u = Math.max(fw, fh);
     paper(g, fw, fh, stock);
-    // a faint printed ring where the disc sits, as some inserts carry
-    inked(g, stock, 0.12);
-    g.lineWidth = u * 0.004;
-    g.beginPath();
-    g.arc(fw / 2, fh / 2, (disc * u) / 2 + u * 0.012, 0, Math.PI * 2);
-    g.stroke();
     const m = u * 0.035;
     inked(g, stock, 0.75);
     g.font = `700 ${u * 0.017}px ${sans}`;
@@ -505,7 +501,7 @@ function drawTray(t: Track, upright: boolean) {
     inked(g, stock, 0.6);
     g.textAlign = "right";
     g.font = `400 ${u * 0.015}px ${mono}`;
-    g.fillText(`℗ ${t.year}  ·  ${formatTime(clipMs(t))}`, fw - m, fh - m);
+    g.fillText(`℗ ${t.year}  ·  ${length(t)}`, fw - m, fh - m);
   });
 }
 
@@ -554,7 +550,7 @@ function drawBack(t: Track, spineShare: number) {
   g.fillText(t.title, x0 + w * 0.04, h * 0.34);
   g.textAlign = "right";
   g.font = `500 ${w * 0.017}px ${mono}`;
-  g.fillText(formatTime(clipMs(t)), x1, h * 0.34);
+  g.fillText(length(t), x1, h * 0.34);
   g.textAlign = "left";
   inked(g, stock, 0.6);
   g.font = `400 ${w * 0.014}px ${sans}`;

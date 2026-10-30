@@ -31,7 +31,7 @@ export function TrackMeta({ track, hidden, narrow }: { track: Track; hidden: boo
     <div className="pointer-events-none absolute inset-x-0 bottom-[clamp(44px,9.5vh,104px)] px-4">
       <AnimatePresence mode="wait">
         {!hidden && (
-          <motion.div key={track.slug} {...swap} className="mx-auto flex max-w-[860px] flex-col items-center gap-3 text-center">
+          <motion.div key={track.slug} {...swap} className="mx-auto flex max-w-215 flex-col items-center gap-3 text-center">
             <p className={cx(SANS, "line-clamp-2 max-w-[56ch] text-[13px] leading-snug sm:text-sm")} style={{ color: C.subdued }}>
               {track.blurb}
             </p>
